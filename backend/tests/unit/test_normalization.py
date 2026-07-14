@@ -1,0 +1,18 @@
+from app.services.normalization.language_normalizer import language_rank, normalize_language
+from app.services.normalization.skill_normalizer import normalize_skill
+from app.services.normalization.text_normalizer import normalize_text
+
+
+def test_normalize_text_removes_accents_and_noise() -> None:
+    assert normalize_text("  Février_2024 / Power-BI  ") == "fevrier 2024 power bi"
+
+
+def test_skill_aliases() -> None:
+    assert normalize_skill("PowerBI") == "power bi"
+    assert normalize_skill("Python3") == "python"
+
+
+def test_language_alias_and_rank() -> None:
+    assert normalize_language("English") == "anglais"
+    assert language_rank("C1") > language_rank("B1")
+

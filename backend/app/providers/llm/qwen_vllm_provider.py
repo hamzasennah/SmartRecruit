@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+import json
+import re
+from typing import Any
+
+import httpx
+
+from app.config import Settings
+from app.core.exceptions import ProviderUnavailableError
+
+
+class QwenVLLMProvider:
+    enabled = True
+
+    def __init__(self, base_url: str, model: str, timeout: float = 180.0) -> None:
+        self.base_url = base_url
+        self.model = model
+        self.timeout = timeout
+
+    def generate_json(self, prompt: str) -> dict[str, Any]:
+        try:
+            response = httpx.post(f"{self.base_url}/chat/completions", json={"model": self.model, "messages": [{"role": "system", "content": "Tu reponds uniquement en JSON valide."}, {"role": "user", "content": prompt}], "temperature": 0.1, "max_tokens": 1800}, timeout=self.timeout)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailableError(f"Provider Qwen/vLLM indisponible: {exc}") from exc
+        return _loads_json(response.json()["choices"][0]["message"]["content"])
+
+
+class TestQwenProvider:
+    enabled = False
+
+    def generate_json(self, prompt: str) -> dict[str, Any]:
+        return {}
+
+
+def get_llm_provider(settings: Settings):
+    return TestQwenProvider() if settings.test_mode else QwenVLLMProvider(settings.llm_base_url, settings.llm_model)
+
+
+def _loads_json(text: str) -> dict[str, Any]:
+    candidate = text.strip()
+    if candidate.startswith("```"):
+        candidate = re.sub(r"^```(?:json)?", "", candidate).strip()
+        candidate = re.sub(r"```$", "", candidate).strip()
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        start, end = candidate.find("{"), candidate.rfind("}")
+        if start == -1 or end <= start:
+            raise
+        return json.loads(candidate[start:end + 1])
+

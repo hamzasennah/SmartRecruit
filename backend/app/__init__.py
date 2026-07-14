@@ -1,0 +1,2 @@
+"""SmartRecruit backend package."""
+
