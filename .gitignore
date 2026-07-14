@@ -1,7 +1,23 @@
 .DS_Store
 Thumbs.db
+
 backend/.env
 backend/.venv/
 backend/venv/
+backend/.venv-vllm/
+
 backend/__pycache__/
 backend/.pytest_cache/
+__pycache__/
+*.pyc
+
+# CV et fiches de poste confidentiels
+backend/samples/
+
+# Documents envoyés pendant les tests
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Résultats générés localement
+backend/storage/documents/*
+backend/storage/results/*
