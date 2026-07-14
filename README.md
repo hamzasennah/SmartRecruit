@@ -7,7 +7,8 @@ Backend FastAPI pour classer des CV par rapport a une fiche de poste avec une ap
 - normalisation des competences, diplomes, langues et intitules ;
 - calcul Python des durees d'experience et fusion des periodes chevauchantes ;
 - retrieval semantique par sections avec embeddings Qwen et Qdrant ;
-- scoring explicable par categories ;
+- scoring explicable par categories, avec redistribution des poids sur les criteres reellement presents dans la fiche de poste ;
+- calcul de l'experience utile uniquement sur les periodes jugees pertinentes pour le poste ;
 - classement final avec forces, faiblesses et preuves.
 
 Le projet contient uniquement le backend pour le moment.
