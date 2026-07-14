@@ -134,9 +134,40 @@ def test_responsibilities_require_specific_cv_evidence_not_single_keyword_overla
         ],
     )
 
-    assert result["score"] == 0.0
+    assert 0.0 < result["score"] < 30.0
     assert result["matched"] == []
-    assert result["missing"] == job.responsibilities
+    assert "Data available in datalake Snowflake + Azure" not in result["missing"]
+    assert result["details"]["partial"] == ["Data available in datalake Snowflake + Azure"]
+
+
+def test_responsibilities_give_partial_credit_for_reporting_and_visualisation() -> None:
+    cv = StructuredCV(
+        candidate_name="Soufyane",
+        experiences=[
+            Experience(
+                job_title="Developpeur Full Stack",
+                missions=[
+                    "Reporting interne, automatisation des flux SQL et visualisation de donnees sur Azure.",
+                    "Pilotage d'une plateforme traitant des millions de points de donnees.",
+                ],
+            )
+        ],
+    )
+    job = StructuredJobDescription(
+        responsibilities=[
+            "Creer et ameliorer les tableaux de bord et KPI.",
+            "Piloter le workstream BI/Data.",
+            "Clarifier les besoins metiers et assurer leur couverture.",
+            "Garantir la disponibilite des donnees dans Snowflake/Azure.",
+        ],
+    )
+
+    result = match_responsibilities(cv, job, retrieved_evidence=[])
+
+    assert 20.0 <= result["score"] < 70.0
+    assert result["matched"] == []
+    assert "Creer et ameliorer les tableaux de bord et KPI." in result["details"]["partial"]
+    assert "Clarifier les besoins metiers et assurer leur couverture." in result["missing"]
 
 
 def test_responsibilities_ignore_language_sections_and_low_retrieval_scores() -> None:

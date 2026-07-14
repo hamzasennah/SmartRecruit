@@ -18,7 +18,7 @@ def segment_sections(text: str) -> dict[str, str]:
             sections.setdefault(current, [])
         else:
             sections.setdefault(current, []).append(line)
-    compact = {key: " ".join(value).strip() for key, value in sections.items() if " ".join(value).strip()}
+    compact = {key: "\n".join(value).strip() for key, value in sections.items() if "\n".join(value).strip()}
     compact.setdefault("full_text", text)
     return compact
 
@@ -31,4 +31,3 @@ def _section_for_line(line: str) -> str | None:
         if re.fullmatch(pattern, normalized) or re.search(rf"\b{pattern}\b", normalized):
             return section
     return None
-

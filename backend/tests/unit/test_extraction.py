@@ -64,7 +64,12 @@ def test_job_extractor_keeps_data_analyst_requirements_from_realistic_job_sheet(
     }.issubset(skills)
     assert job.experience_requirements.minimum_months == 12
     assert not any(item.lower().startswith("by it solution") for item in job.responsibilities)
-    assert any("lead data workstream" in item.lower() for item in job.responsibilities)
+    assert job.responsibilities == [
+        "Creer et ameliorer les tableaux de bord et KPI.",
+        "Piloter le workstream BI/Data.",
+        "Clarifier les besoins metiers et assurer leur couverture.",
+        "Garantir la disponibilite des donnees dans Snowflake/Azure.",
+    ]
 
 
 def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experiences() -> None:
@@ -97,6 +102,7 @@ def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experien
     cv = CVExtractor(DisabledLLM()).extract(document)
 
     assert [experience.job_title for experience in cv.experiences] == ["Developpeur Full Stack"]
+    assert cv.education
     assert all("master" not in (experience.job_title or "").lower() for experience in cv.experiences)
     assert all("ingenieur d'etat" not in (experience.job_title or "").lower() for experience in cv.experiences)
 
@@ -107,3 +113,63 @@ def test_cv_extractor_filters_noisy_llm_experience_titles() -> None:
     cv = CVExtractor(NoisyLLM()).extract(document)
 
     assert [experience.job_title for experience in cv.experiences] == ["Developpeur Full Stack"]
+
+
+def test_cv_extractor_extracts_companies_and_abbreviated_french_dates() -> None:
+    text = """
+    Zakariaa
+    Experience
+    Experteye Developpeur FullStack JavaScript Mar 2022 - Juil 2022
+    Developpement de modules React et NodeJS.
+    BCP Developpeur Backend sept 2022 - dec 2022
+    API Python et NodeJS pour un backend robuste.
+    Formation
+    Master Informatique 2020 - 2022
+    Licence Informatique 2017 - 2020
+    """
+    document = DocumentText(
+        filename="zakariaa.txt",
+        text=text,
+        char_count=len(text),
+        sections={
+            "experience": (
+                "Experteye Developpeur FullStack JavaScript Mar 2022 - Juil 2022\n"
+                "Developpement de modules React et NodeJS.\n"
+                "BCP Developpeur Backend sept 2022 - dec 2022\n"
+                "API Python et NodeJS pour un backend robuste."
+            ),
+            "education": "Master Informatique 2020 - 2022\nLicence Informatique 2017 - 2020",
+        },
+    )
+
+    cv = CVExtractor(DisabledLLM()).extract(document)
+
+    assert [experience.company for experience in cv.experiences] == ["Experteye", "BCP"]
+    assert [experience.duration_months for experience in cv.experiences] == [5, 4]
+    assert [education.degree for education in cv.education] == ["Master", "Licence"]
+    assert [(education.start_year, education.end_year) for education in cv.education] == [(2020, 2022), (2017, 2020)]
+
+
+def test_cv_extractor_keeps_insea_engineering_education() -> None:
+    text = """
+    Soufyane
+    Formation
+    Ingenieur d'Etat en Data et Logiciels
+    INSEA
+    2019 - 2022
+    """
+    document = DocumentText(
+        filename="soufyane.txt",
+        text=text,
+        char_count=len(text),
+        sections={"education": "Ingenieur d'Etat en Data et Logiciels\nINSEA\n2019 - 2022"},
+    )
+
+    cv = CVExtractor(DisabledLLM()).extract(document)
+
+    assert cv.education
+    assert cv.education[0].degree == "Ingenieur d'Etat en Data et Logiciels"
+    assert cv.education[0].institution == "INSEA"
+    assert cv.education[0].start_year == 2019
+    assert cv.education[0].end_year == 2022
+    assert len(cv.education) == 1

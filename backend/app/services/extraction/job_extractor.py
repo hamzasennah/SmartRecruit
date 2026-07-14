@@ -41,6 +41,7 @@ class JobExtractor:
         for language in job.language_requirements:
             language.language = normalize_language(language.language)
             language.minimum_level = normalize_language_level(language.minimum_level)
+        job.responsibilities = _clean_responsibilities(document.text, job.responsibilities)
         job.raw_text_preview = document.text[:600]
         return job
 
@@ -138,6 +139,43 @@ def _extract_responsibilities(text: str) -> list[str]:
         if any(signal in normalized for signal in signals):
             responsibilities.append(line.strip(" :;-"))
     return _dedupe(responsibilities)[:12]
+
+
+def _clean_responsibilities(text: str, extracted: list[str]) -> list[str]:
+    normalized = normalize_text(text)
+    responsibilities: list[str] = []
+    if any(signal in normalized for signal in ["dashboard", "dashbord", "tableau de bord", "kpi", "reporting"]):
+        responsibilities.append("Creer et ameliorer les tableaux de bord et KPI.")
+    if any(signal in normalized for signal in ["data workstream", "bi data project management", "project management", "lead data"]):
+        responsibilities.append("Piloter le workstream BI/Data.")
+    if any(signal in normalized for signal in ["business needs", "besoins metiers", "clarify", "covered by it solution", "couverture"]):
+        responsibilities.append("Clarifier les besoins metiers et assurer leur couverture.")
+    if (
+        any(signal in normalized for signal in ["availability of data", "data available", "data lake", "datalake"])
+        or ("snowflake" in normalized and "azure" in normalized)
+    ):
+        responsibilities.append("Garantir la disponibilite des donnees dans Snowflake/Azure.")
+    if responsibilities:
+        return _dedupe(responsibilities)
+    return _dedupe([item for item in extracted if _looks_like_responsibility(item)])
+
+
+def _looks_like_responsibility(value: str) -> bool:
+    normalized = normalize_text(value)
+    if not normalized:
+        return False
+    excluded_starts = ("tools", "tool", "competences", "skills", "data analyst")
+    excluded_signals = ("must", "required", "autonomy", "leadership", "excel power bi")
+    if normalized.startswith(excluded_starts):
+        return False
+    if any(signal in normalized for signal in excluded_signals):
+        return False
+    action_signals = (
+        "creer", "create", "enhance", "ameliorer", "piloter", "lead",
+        "clarifier", "clarify", "garantir", "assurer", "availability",
+        "reporting", "dashboard", "kpi", "workstream",
+    )
+    return any(signal in normalized for signal in action_signals)
 
 
 def _logical_lines(text: str) -> list[str]:

@@ -13,6 +13,9 @@ from app.services.normalization.skill_normalizer import normalize_skill_list
 from app.services.normalization.text_normalizer import normalize_text
 
 
+KNOWN_COMPANIES = ["Experteye", "BCP", "Renault", "Maltem Africa", "Sanlam"]
+
+
 class CVExtractor:
     def __init__(self, llm_provider) -> None:
         self._llm = llm_provider
@@ -48,7 +51,7 @@ class CVExtractor:
     def _heuristic_extract(self, document: DocumentText) -> StructuredCV:
         text = document.text
         experience_text = document.sections.get("experience") or text
-        education_text = document.sections.get("education") or text
+        education_text = "\n".join([document.sections.get("education", ""), text])
         project_text = document.sections.get("projects") or text
         skills = _extract_known_skills(text)
         return StructuredCV(
@@ -93,27 +96,38 @@ def _extract_experiences(text: str) -> list[Experience]:
     month_name = r"[^\W\d_]{3,12}"
     date_token = rf"(?:{month_name}\s+\d{{4}}|\d{{1,2}}[/.-]\d{{4}}|\d{{4}})"
     end_token = rf"(?:{date_token}|present|pr\u00e9sent|aujourd'hui|actuellement)"
-    pattern = re.compile(
-        rf"(?P<title>[^\n\r]{{3,90}}?)\s+"
+    title_first_pattern = re.compile(
+        rf"(?P<title>[^\n\r]{{3,120}}?)\s+"
         rf"(?P<start>{date_token})\s*(?:a|\u00e0|to|-|\u2013|\u2014)\s*"
         rf"(?P<end>{end_token})",
         re.IGNORECASE | re.UNICODE,
     )
+    date_first_pattern = re.compile(
+        rf"(?P<start>{date_token})\s*(?:a|\u00e0|to|-|\u2013|\u2014)\s*"
+        rf"(?P<end>{end_token})\s+(?P<title>[^\n\r]{{3,160}})",
+        re.IGNORECASE | re.UNICODE,
+    )
 
     experiences: list[Experience] = []
-    for match in pattern.finditer(text):
-        window = text[match.start() : min(len(text), match.end() + 700)]
-        title = _clean_experience_title(match.group("title"))
+    lines = _logical_lines(text)
+    for index, line in enumerate(lines):
+        match = title_first_pattern.search(line) or date_first_pattern.search(line)
+        if not match:
+            continue
+        window = "\n".join(lines[index : index + 5])
+        title = _extract_role_title(match.group("title"))
         if not _is_professional_experience_title(title):
             continue
+        company = _extract_company(line, window)
         experiences.append(
             Experience(
-                job_title=title[-80:],
+                job_title=title,
+                company=company,
                 start_date=match.group("start").strip(),
                 end_date=match.group("end").strip(),
                 missions=_extract_mission_snippets(window),
                 skills_used=_extract_known_skills(window),
-                confidence=0.6,
+                confidence=0.65 if company else 0.6,
             )
         )
 
@@ -134,8 +148,43 @@ def _filter_professional_experiences(experiences: list[Experience]) -> list[Expe
 
 def _clean_experience_title(value: str) -> str:
     value = re.sub(r"^[\u2022\-\u2013\u2014*\s]+", "", value)
+    value = re.sub(r"^[.:,;|/\\\s]+", "", value)
     value = re.sub(r"\s+", " ", value)
     return value.strip(" :;-")
+
+
+def _logical_lines(text: str) -> list[str]:
+    return [line.strip() for line in re.split(r"[\n\r]+", text) if line.strip()]
+
+
+def _extract_role_title(value: str) -> str:
+    cleaned = _clean_experience_title(value)
+    role_pattern = re.compile(
+        r"(data analyst|data scientist|data engineer|developpeur\s+[^,;|]{0,60}|"
+        r"d\u00e9veloppeur\s+[^,;|]{0,60}|developer\s+[^,;|]{0,60}|"
+        r"full\s*stack\s+[^,;|]{0,60}|frontend\s+[^,;|]{0,60}|backend\s+[^,;|]{0,60}|"
+        r"ingenieur\s+[^,;|]{0,60}|ing\u00e9nieur\s+[^,;|]{0,60}|"
+        r"consultant\s+[^,;|]{0,60}|chef de projet\s+[^,;|]{0,60}|"
+        r"stagiaire\s+[^,;|]{0,60}|stage\s+[^,;|]{0,60}|support\s+[^,;|]{0,60})",
+        flags=re.IGNORECASE,
+    )
+    matches = list(role_pattern.finditer(cleaned))
+    if matches:
+        cleaned = matches[-1].group(0)
+    cleaned = re.split(r"\s{2,}| chez | at | - | \| ", cleaned, maxsplit=1, flags=re.IGNORECASE)[0]
+    return _clean_experience_title(cleaned)[:80]
+
+
+def _extract_company(line: str, window: str) -> str | None:
+    combined = f"{line}\n{window}"
+    normalized = normalize_text(combined)
+    for company in KNOWN_COMPANIES:
+        if normalize_text(company) in normalized:
+            return company
+    match = re.search(r"(?:chez|at)\s+([A-Z][A-Za-z0-9& .'-]{2,40})", combined)
+    if match:
+        return match.group(1).strip(" .,-")
+    return None
 
 
 def _is_professional_experience_title(title: str) -> bool:
@@ -176,12 +225,89 @@ def _extract_mission_snippets(text: str) -> list[str]:
 
 
 def _extract_education(text: str) -> list[Education]:
-    normalized = normalize_text(text)
-    return [
-        Education(degree=label, normalized_level=label, confidence=0.55)
-        for label in ["bac+5", "master", "diplome d'ingenieur", "licence", "bachelor", "doctorat"]
-        if label in normalized
+    education: list[Education] = []
+    lines = _logical_lines(text)
+    for index, line in enumerate(lines):
+        context = _education_context(lines, index)
+        normalized = normalize_text(context)
+        if not _looks_like_education_line(normalized):
+            continue
+        degree = _education_degree_from_line(context)
+        if not degree:
+            continue
+        institution = _education_institution_from_line(context)
+        years = [int(year) for year in re.findall(r"(?:19|20)\d{2}", context)]
+        education.append(
+            Education(
+                degree=degree,
+                normalized_level=normalize_education_level(degree),
+                institution=institution,
+                start_year=years[0] if years else None,
+                end_year=years[-1] if len(years) >= 2 else None,
+                confidence=0.65,
+            )
+        )
+    return _dedupe_education(education)
+
+
+def _education_context(lines: list[str], index: int) -> str:
+    selected = [lines[index]]
+    for next_line in lines[index + 1 : index + 3]:
+        if _education_degree_from_line(next_line):
+            break
+        selected.append(next_line)
+    return "\n".join(selected)
+
+
+def _looks_like_education_line(normalized: str) -> bool:
+    markers = [
+        "ingenieur d etat", "diplome d ingenieur", "master", "licence",
+        "bachelor", "bac+5", "bac+3", "insea", "universite", "ecole",
+        "faculte", "formation",
     ]
+    return any(marker in normalized for marker in markers)
+
+
+def _education_degree_from_line(line: str) -> str | None:
+    normalized = normalize_text(line)
+    degree_patterns = [
+        ("ingenieur d etat", "Ingenieur d'Etat en Data et Logiciels" if "data" in normalized else "Diplome d'ingenieur"),
+        ("diplome d ingenieur", "Diplome d'ingenieur"),
+        ("master", "Master"),
+        ("licence", "Licence"),
+        ("bachelor", "Bachelor"),
+        ("bac+5", "Bac+5"),
+        ("bac+3", "Bac+3"),
+    ]
+    for marker, degree in degree_patterns:
+        if marker in normalized:
+            return degree
+    return None
+
+
+def _education_institution_from_line(line: str) -> str | None:
+    known = ["INSEA", "ENSIAS", "EMSI", "UM5", "Universite", "Faculte", "Ecole"]
+    normalized = normalize_text(line)
+    for institution in known:
+        if normalize_text(institution) in normalized:
+            return institution
+    return None
+
+
+def _dedupe_education(values: list[Education]) -> list[Education]:
+    by_degree: dict[str, Education] = {}
+    result: list[Education] = []
+    for item in values:
+        key = normalize_text(item.degree)
+        existing = by_degree.get(key)
+        if not existing:
+            by_degree[key] = item
+            result.append(item)
+            continue
+        existing.institution = existing.institution or item.institution
+        existing.start_year = existing.start_year or item.start_year
+        existing.end_year = existing.end_year or item.end_year
+    return result
 
 
 def _extract_languages(text: str) -> list[Language]:

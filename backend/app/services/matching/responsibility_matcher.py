@@ -30,30 +30,60 @@ CRITICAL_TERMS = [
 
 ALLOWED_EVIDENCE_SECTIONS = {"experience", "experiences", "projects", "responsibilities", "skills"}
 MIN_RETRIEVAL_EVIDENCE_SCORE = 0.2
+FULL_RESPONSIBILITY_THRESHOLD = 70.0
+PARTIAL_RESPONSIBILITY_THRESHOLD = 20.0
+
+CONCEPT_GROUPS = {
+    "dashboard_reporting": {
+        "responsibility": {"dashboard", "dashbord", "tableau de bord", "kpi", "reporting"},
+        "evidence": {"dashboard", "dashbord", "tableau de bord", "kpi", "reporting", "visualisation", "visualization", "tableaux de suivi"},
+    },
+    "data_processing": {
+        "responsibility": {"data", "donnees", "snowflake", "azure", "data lake", "datalake", "disponibilite"},
+        "evidence": {"data", "donnees", "sql", "azure", "traitement", "flux", "millions", "points de donnees"},
+    },
+    "workflow_management": {
+        "responsibility": {"workstream", "project management", "piloter", "lead", "coordination"},
+        "evidence": {"pilotage", "piloter", "plateforme", "coordination", "lead", "management", "projet"},
+    },
+    "business_needs": {
+        "responsibility": {"business needs", "besoins", "metiers", "clarifier", "couverture"},
+        "evidence": {"besoins", "metiers", "utilisateur", "fonctionnel", "client", "couverture"},
+    },
+    "automation": {
+        "responsibility": {"automatisation", "automatiser", "flux"},
+        "evidence": {"automatisation", "automatiser", "flux"},
+    },
+}
 
 
 def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retrieved_evidence: list[dict] | None = None) -> dict:
     if not job.responsibilities:
         return {"applicable": False, "score": 0.0, "matched": [], "missing": [], "details": {}}
     passages = _candidate_passages(cv, retrieved_evidence)
-    matched, missing, matched_evidence = [], [], []
+    matched, partial, missing, matched_evidence, scored = [], [], [], [], []
     for responsibility in job.responsibilities:
         best = _best_passage_match(responsibility, passages)
-        if best["matched"]:
+        scored.append({key: best[key] for key in ["responsibility", "score", "status", "evidence"]})
+        if best["status"] == "full":
             matched.append(responsibility)
             matched_evidence.append(best["evidence"])
+        elif best["status"] == "partial":
+            partial.append(responsibility)
         else:
             missing.append(responsibility)
-    score = len(matched) / len(job.responsibilities)
+    score = sum(item["score"] for item in scored) / len(job.responsibilities)
     return {
         "applicable": True,
-        "score": round(score * 100, 2),
+        "score": round(score, 2),
         "matched": matched,
-        "missing": missing[:5],
+        "missing": missing,
         "details": {
             "retrieved_evidence_count": len(retrieved_evidence or []),
             "candidate_passage_count": len(passages),
             "matched_evidence": matched_evidence[:5],
+            "partial": partial,
+            "responsibility_scores": scored,
         },
     }
 
@@ -75,27 +105,44 @@ def _is_relevant_retrieved_evidence(item: dict) -> bool:
 
 
 def _best_passage_match(responsibility: str, passages: list[str]) -> dict:
-    best = {"matched": False, "score": 0.0, "evidence": ""}
+    best = {"responsibility": responsibility, "status": "none", "score": 0.0, "evidence": ""}
     for passage in passages:
-        score, matched = _passage_match_score(responsibility, passage)
+        score, status = _passage_match_score(responsibility, passage)
         if score > best["score"]:
             best = {
-                "matched": matched,
+                "responsibility": responsibility,
+                "status": status,
                 "score": score,
                 "evidence": f"{responsibility} => {passage[:220]}",
             }
     return best
 
 
-def _passage_match_score(responsibility: str, passage: str) -> tuple[float, bool]:
+def _passage_match_score(responsibility: str, passage: str) -> tuple[float, str]:
     critical_terms = _terms_in_text(responsibility)
     critical_coverage = _critical_coverage(critical_terms, passage)
+    required_concepts = _required_concepts(responsibility)
+    covered_concepts = _covered_concepts(required_concepts, passage)
+    concept_coverage = len(covered_concepts) / len(required_concepts) if required_concepts else 0.0
     token_coverage = _token_coverage(responsibility, passage)
-    score = round((0.7 * critical_coverage) + (0.3 * token_coverage), 4)
+    score = round(max(
+        (0.75 * critical_coverage + 0.25 * token_coverage) * 100,
+        (0.75 * concept_coverage + 0.25 * token_coverage) * 60,
+    ), 2)
     if critical_terms:
         minimum_critical = 1.0 if len(critical_terms) == 1 else 0.65
-        return score, critical_coverage >= minimum_critical and token_coverage >= 0.18
-    return score, token_coverage >= 0.45
+        if critical_coverage >= minimum_critical and token_coverage >= 0.18:
+            return max(score, FULL_RESPONSIBILITY_THRESHOLD), "full"
+        if "workflow_management" in required_concepts and "workflow_management" not in covered_concepts:
+            return 0.0, "none"
+        if concept_coverage > 0 and score >= PARTIAL_RESPONSIBILITY_THRESHOLD:
+            return min(score, 60.0), "partial"
+        return 0.0, "none"
+    if score >= FULL_RESPONSIBILITY_THRESHOLD:
+        return score, "full"
+    if score >= PARTIAL_RESPONSIBILITY_THRESHOLD:
+        return score, "partial"
+    return 0.0, "none"
 
 
 def _critical_coverage(terms: list[str], text: str) -> float:
@@ -110,6 +157,25 @@ def _token_coverage(left: str, right: str) -> float:
     left_tokens = _meaningful_tokens(left)
     right_tokens = _meaningful_tokens(right)
     return len(left_tokens.intersection(right_tokens)) / len(left_tokens) if left_tokens and right_tokens else 0.0
+
+
+def _required_concepts(responsibility: str) -> list[str]:
+    responsibility_normalized = normalize_text(responsibility)
+    return [
+        name
+        for name, group in CONCEPT_GROUPS.items()
+        if any(term in responsibility_normalized for term in group["responsibility"])
+    ]
+
+
+def _covered_concepts(required_concepts: list[str], passage: str) -> list[str]:
+    passage_normalized = normalize_text(passage)
+    covered: list[str] = []
+    for name in required_concepts:
+        group = CONCEPT_GROUPS[name]
+        if any(term in passage_normalized for term in group["evidence"]):
+            covered.append(name)
+    return covered
 
 
 def _meaningful_tokens(value: str) -> set[str]:
