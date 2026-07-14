@@ -28,6 +28,9 @@ CRITICAL_TERMS = [
     "packaging",
 ]
 
+ALLOWED_EVIDENCE_SECTIONS = {"experience", "experiences", "projects", "responsibilities", "skills"}
+MIN_RETRIEVAL_EVIDENCE_SCORE = 0.2
+
 
 def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retrieved_evidence: list[dict] | None = None) -> dict:
     if not job.responsibilities:
@@ -59,9 +62,16 @@ def _candidate_passages(cv: StructuredCV, retrieved_evidence: list[dict] | None)
     passages = [mission for experience in cv.experiences for mission in experience.missions]
     passages.extend(project.description or "" for project in cv.projects)
     for item in retrieved_evidence or []:
-        if float(item.get("rerank_score", item.get("score", 0.0))) >= 0.05:
+        if _is_relevant_retrieved_evidence(item):
             passages.append(str(item.get("text", "")))
     return _dedupe([passage for passage in passages if len(passage.strip()) >= 20])
+
+
+def _is_relevant_retrieved_evidence(item: dict) -> bool:
+    metadata = item.get("metadata", {}) or {}
+    section = normalize_text(str(metadata.get("section", "")))
+    score = float(item.get("rerank_score", item.get("score", 0.0)))
+    return section in ALLOWED_EVIDENCE_SECTIONS and score >= MIN_RETRIEVAL_EVIDENCE_SCORE
 
 
 def _best_passage_match(responsibility: str, passages: list[str]) -> dict:

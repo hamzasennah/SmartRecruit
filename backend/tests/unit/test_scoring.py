@@ -42,6 +42,28 @@ def test_absent_criteria_are_ignored_and_weights_are_redistributed() -> None:
     assert match.category_scores[0].details["missing_preferred"] == []
 
 
+def test_skill_missing_lists_keep_mandatory_and_preferred_separated() -> None:
+    cv = StructuredCV(
+        candidate_name="Candidat Azure",
+        skills=SkillSet(technical=["azure"]),
+    )
+    job = StructuredJobDescription(
+        required_skills=RequiredSkills(
+            mandatory=["power bi", "excel", "azure"],
+            preferred=["foundry", "spm"],
+        ),
+    )
+
+    match = ScoringEngine().score_candidate("cv.txt", cv, job, [])
+    technical = match.category_scores[0]
+
+    assert technical.missing == ["power bi", "excel"]
+    assert technical.details["missing_mandatory"] == ["power bi", "excel"]
+    assert technical.details["missing_preferred"] == ["foundry", "spm"]
+    assert technical.details["mandatory_weight"] == 0.8
+    assert technical.details["preferred_weight"] == 0.2
+
+
 def test_irrelevant_experience_is_not_counted_as_relevant_months() -> None:
     cv = StructuredCV(
         candidate_name="Candidat JavaScript",
@@ -115,3 +137,61 @@ def test_responsibilities_require_specific_cv_evidence_not_single_keyword_overla
     assert result["score"] == 0.0
     assert result["matched"] == []
     assert result["missing"] == job.responsibilities
+
+
+def test_responsibilities_ignore_language_sections_and_low_retrieval_scores() -> None:
+    cv = StructuredCV(candidate_name="Candidat", skills=SkillSet(technical=[]))
+    job = StructuredJobDescription(
+        responsibilities=["Tools : Power BI, Excel et Foundry"],
+    )
+
+    result = match_responsibilities(
+        cv,
+        job,
+        retrieved_evidence=[
+            {
+                "text": "Power BI Excel Foundry",
+                "rerank_score": 0.95,
+                "metadata": {"section": "languages"},
+            },
+            {
+                "text": "Power BI Excel Foundry",
+                "rerank_score": 0.19,
+                "metadata": {"section": "experience"},
+            },
+        ],
+    )
+
+    assert result["score"] == 0.0
+    assert result["matched"] == []
+
+
+def test_scoring_engine_hides_irrelevant_or_weak_retrieved_evidence() -> None:
+    cv = StructuredCV(candidate_name="Candidat", skills=SkillSet(technical=["power bi"]))
+    job = StructuredJobDescription(required_skills=RequiredSkills(mandatory=["power bi"]))
+
+    match = ScoringEngine().score_candidate(
+        "cv.txt",
+        cv,
+        job,
+        retrieved_evidence=[
+            {
+                "text": "Langues: francais anglais arabe",
+                "rerank_score": 0.99,
+                "metadata": {"section": "languages"},
+            },
+            {
+                "text": "Power BI dashboard reporting.",
+                "rerank_score": 0.19,
+                "metadata": {"section": "experience"},
+            },
+            {
+                "text": "Power BI dashboard reporting.",
+                "rerank_score": 0.31,
+                "metadata": {"section": "experience"},
+            },
+        ],
+    )
+
+    assert [evidence.source for evidence in match.evidence] == ["experience"]
+    assert match.evidence[0].score == 0.31

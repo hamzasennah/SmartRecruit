@@ -4,8 +4,13 @@ from app.services.matching.experience_matcher import match_experience
 from app.services.matching.language_matcher import match_languages
 from app.services.matching.responsibility_matcher import match_responsibilities
 from app.services.matching.skill_matcher import match_skills, match_soft_skills
+from app.services.normalization.text_normalizer import normalize_text
 from app.services.scoring.explanation_builder import build_strengths, build_weaknesses
 from app.services.scoring.weights import load_scoring_weights
+
+
+DISPLAY_EVIDENCE_SECTIONS = {"experience", "experiences", "projects", "responsibilities", "skills"}
+MIN_DISPLAY_EVIDENCE_SCORE = 0.2
 
 
 class ScoringEngine:
@@ -28,15 +33,7 @@ class ScoringEngine:
             _category(name, result, weights, applicable_results)
             for name, result in applicable_results.items()
         ]
-        evidence = [
-            Evidence(
-                source=str(item.get("metadata", {}).get("section", "retrieval")),
-                text=str(item.get("text", "")),
-                score=float(item.get("rerank_score", item.get("score", 0.0))),
-                metadata=item.get("metadata", {}),
-            )
-            for item in (retrieved_evidence or [])[:8]
-        ]
+        evidence = _clean_retrieved_evidence(retrieved_evidence or [])
         return CandidateMatch(
             candidate_name=cv.candidate_name or filename,
             filename=filename,
@@ -64,3 +61,22 @@ def _category(name, result, weights, applicable_results) -> CategoryScore:
         missing=result.get("missing", []),
         details=details,
     )
+
+
+def _clean_retrieved_evidence(rows: list[dict]) -> list[Evidence]:
+    evidence: list[Evidence] = []
+    for item in rows:
+        metadata = item.get("metadata", {}) or {}
+        section = normalize_text(str(metadata.get("section", "retrieval")))
+        score = float(item.get("rerank_score", item.get("score", 0.0)))
+        if section not in DISPLAY_EVIDENCE_SECTIONS or score < MIN_DISPLAY_EVIDENCE_SCORE:
+            continue
+        evidence.append(
+            Evidence(
+                source=section,
+                text=str(item.get("text", "")),
+                score=score,
+                metadata=metadata,
+            )
+        )
+    return evidence[:8]

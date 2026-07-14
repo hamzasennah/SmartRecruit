@@ -31,6 +31,7 @@ class CVExtractor:
         cv.skills.soft = normalize_skill_list(cv.skills.soft)
         for experience in cv.experiences:
             experience.skills_used = normalize_skill_list(experience.skills_used)
+        cv.experiences = _filter_professional_experiences(cv.experiences)
         cv.experiences = enrich_experience_durations(cv.experiences)
         for education in cv.education:
             education.normalized_level = normalize_education_level(
@@ -89,14 +90,12 @@ def _extract_known_skills(text: str) -> list[str]:
 
 
 def _extract_experiences(text: str) -> list[Experience]:
-    month_name = r"[A-Za-zÀ-ÖØ-öø-ÿ]{3,12}"
-    date_token = (
-        rf"(?:{month_name}\s+\d{{4}}|\d{{1,2}}[/.-]\d{{4}}|\d{{4}})"
-    )
-    end_token = rf"(?:{date_token}|present|présent|aujourd'hui|actuellement)"
+    month_name = r"[^\W\d_]{3,12}"
+    date_token = rf"(?:{month_name}\s+\d{{4}}|\d{{1,2}}[/.-]\d{{4}}|\d{{4}})"
+    end_token = rf"(?:{date_token}|present|pr\u00e9sent|aujourd'hui|actuellement)"
     pattern = re.compile(
         rf"(?P<title>[^\n\r]{{3,90}}?)\s+"
-        rf"(?P<start>{date_token})\s*(?:a|à|to|-|–|—)\s*"
+        rf"(?P<start>{date_token})\s*(?:a|\u00e0|to|-|\u2013|\u2014)\s*"
         rf"(?P<end>{end_token})",
         re.IGNORECASE | re.UNICODE,
     )
@@ -119,14 +118,22 @@ def _extract_experiences(text: str) -> list[Experience]:
         )
 
     if not experiences:
-        match = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:ans|annees|années|years)", normalize_text(text))
+        match = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:ans|annees|ann\u00e9es|years)", normalize_text(text))
         if match:
             experiences.append(Experience(declared_duration=match.group(0), confidence=0.45))
     return experiences
 
 
+def _filter_professional_experiences(experiences: list[Experience]) -> list[Experience]:
+    return [
+        experience
+        for experience in experiences
+        if _is_professional_experience_title(experience.job_title or "")
+    ]
+
+
 def _clean_experience_title(value: str) -> str:
-    value = re.sub(r"^[•\-–—*\s]+", "", value)
+    value = re.sub(r"^[\u2022\-\u2013\u2014*\s]+", "", value)
     value = re.sub(r"\s+", " ", value)
     return value.strip(" :;-")
 
@@ -161,8 +168,8 @@ def _is_professional_experience_title(title: str) -> bool:
 
 def _extract_mission_snippets(text: str) -> list[str]:
     snippets: list[str] = []
-    for raw_line in re.split(r"[\n\r•]+", text):
-        line = raw_line.strip(" -–—*")
+    for raw_line in re.split(r"[\n\r\u2022]+", text):
+        line = raw_line.strip(" -\u2013\u2014*")
         if 25 <= len(line) <= 220:
             snippets.append(line)
     return snippets[:6]

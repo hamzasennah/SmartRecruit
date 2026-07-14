@@ -7,6 +7,32 @@ class DisabledLLM:
     enabled = False
 
 
+class NoisyLLM:
+    enabled = True
+
+    def generate_json(self, prompt: str) -> dict:
+        return {
+            "candidate_name": "Zakariaa",
+            "experiences": [
+                {
+                    "job_title": "Master Informatique",
+                    "start_date": "2020",
+                    "end_date": "2022",
+                },
+                {
+                    "job_title": "Python et NodeJS pour un backend robuste",
+                    "start_date": "2022",
+                    "end_date": "2023",
+                },
+                {
+                    "job_title": "Developpeur Full Stack",
+                    "start_date": "janvier 2023",
+                    "end_date": "decembre 2024",
+                },
+            ],
+        }
+
+
 def test_job_extractor_keeps_data_analyst_requirements_from_realistic_job_sheet() -> None:
     text = """
     Data Analyst packaging tool (SPM)
@@ -45,12 +71,12 @@ def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experien
     text = """
     Soufyane Candidat
     Formation
-    Ingénieur d'État en Data & Logiciels 2021 - 2024
+    Ingenieur d'Etat en Data et Logiciels 2021 - 2024
     Master Informatique 2019 - 2021
-    Expérience
-    Développeur Full Stack janvier 2023 - décembre 2024
+    Experience
+    Developpeur Full Stack janvier 2023 - decembre 2024
     Reporting SQL et visualisation Azure pour des tableaux de suivi.
-    que l'intégration de pages utilisant des modèles d'IA 2022 - 2023
+    que l'integration de pages utilisant des modeles IA 2022 - 2023
     Python et NodeJS pour un backend robuste 2021 - 2022
     """
     document = DocumentText(
@@ -58,11 +84,11 @@ def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experien
         text=text,
         char_count=len(text),
         sections={
-            "education": "Ingénieur d'État en Data & Logiciels 2021 - 2024 Master Informatique 2019 - 2021",
+            "education": "Ingenieur d'Etat en Data et Logiciels 2021 - 2024 Master Informatique 2019 - 2021",
             "experience": (
-                "Développeur Full Stack janvier 2023 - décembre 2024\n"
+                "Developpeur Full Stack janvier 2023 - decembre 2024\n"
                 "Reporting SQL et visualisation Azure pour des tableaux de suivi.\n"
-                "que l'intégration de pages utilisant des modèles d'IA 2022 - 2023\n"
+                "que l'integration de pages utilisant des modeles IA 2022 - 2023\n"
                 "Python et NodeJS pour un backend robuste 2021 - 2022"
             ),
         },
@@ -70,6 +96,14 @@ def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experien
 
     cv = CVExtractor(DisabledLLM()).extract(document)
 
-    assert [experience.job_title for experience in cv.experiences] == ["Développeur Full Stack"]
+    assert [experience.job_title for experience in cv.experiences] == ["Developpeur Full Stack"]
     assert all("master" not in (experience.job_title or "").lower() for experience in cv.experiences)
-    assert all("ingénieur d'état" not in (experience.job_title or "").lower() for experience in cv.experiences)
+    assert all("ingenieur d'etat" not in (experience.job_title or "").lower() for experience in cv.experiences)
+
+
+def test_cv_extractor_filters_noisy_llm_experience_titles() -> None:
+    document = DocumentText(filename="zakariaa.txt", text="CV Zakariaa", char_count=11)
+
+    cv = CVExtractor(NoisyLLM()).extract(document)
+
+    assert [experience.job_title for experience in cv.experiences] == ["Developpeur Full Stack"]
