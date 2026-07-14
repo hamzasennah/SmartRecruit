@@ -28,7 +28,16 @@ def match_skills(cv: StructuredCV, job: StructuredJobDescription) -> dict:
         "score": round((0.8 * mandatory_score + 0.2 * preferred_score) * 100, 2),
         "matched": matched_mandatory + matched_preferred,
         "missing": missing_mandatory + missing_preferred,
-        "details": {"missing_mandatory_count": len(missing_mandatory)},
+        "details": {
+            "matched_mandatory": matched_mandatory,
+            "matched_preferred": matched_preferred,
+            "missing_mandatory": missing_mandatory,
+            "missing_preferred": missing_preferred,
+            "mandatory_count": len(mandatory),
+            "preferred_count": len(preferred),
+            "missing_mandatory_count": len(missing_mandatory),
+            "missing_preferred_count": len(missing_preferred),
+        },
     }
 
 

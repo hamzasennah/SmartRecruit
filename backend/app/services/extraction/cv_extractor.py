@@ -46,6 +46,9 @@ class CVExtractor:
 
     def _heuristic_extract(self, document: DocumentText) -> StructuredCV:
         text = document.text
+        experience_text = document.sections.get("experience") or text
+        education_text = document.sections.get("education") or text
+        project_text = document.sections.get("projects") or text
         skills = _extract_known_skills(text)
         return StructuredCV(
             candidate_name=_guess_name(document.filename, text),
@@ -53,10 +56,10 @@ class CVExtractor:
                 technical=skills,
                 tools=[skill for skill in skills if skill in {"excel", "power bi", "git", "github", "azure"}],
             ),
-            experiences=_extract_experiences(text),
-            education=_extract_education(text),
+            experiences=_extract_experiences(experience_text),
+            education=_extract_education(education_text),
             languages=_extract_languages(text),
-            projects=_extract_projects(text),
+            projects=_extract_projects(project_text),
             raw_text_preview=text[:600],
             extraction_confidence=0.45,
         )
@@ -86,12 +89,9 @@ def _extract_known_skills(text: str) -> list[str]:
 
 
 def _extract_experiences(text: str) -> list[Experience]:
+    month_name = r"[A-Za-zÀ-ÖØ-öø-ÿ]{3,12}"
     date_token = (
-        r"(?:janvier|fevrier|février|mars|avril|mai|juin|juillet|aout|août|"
-        r"septembre|octobre|novembre|decembre|décembre|jan|fev|fév|mar|"
-        r"avr|jun|jul|aou|aoû|sep|sept|oct|nov|dec|déc|january|february|"
-        r"march|april|may|june|july|august|september|october|november|"
-        r"december|feb|apr|aug)\s+\d{4}|\d{1,2}[/.-]\d{4}|\d{4}"
+        rf"(?:{month_name}\s+\d{{4}}|\d{{1,2}}[/.-]\d{{4}}|\d{{4}})"
     )
     end_token = rf"(?:{date_token}|present|présent|aujourd'hui|actuellement)"
     pattern = re.compile(
@@ -104,7 +104,9 @@ def _extract_experiences(text: str) -> list[Experience]:
     experiences: list[Experience] = []
     for match in pattern.finditer(text):
         window = text[match.start() : min(len(text), match.end() + 700)]
-        title = re.sub(r"^[•\-–—*\s]+", "", match.group("title")).strip(" :;-")
+        title = _clean_experience_title(match.group("title"))
+        if not _is_professional_experience_title(title):
+            continue
         experiences.append(
             Experience(
                 job_title=title[-80:],
@@ -121,6 +123,40 @@ def _extract_experiences(text: str) -> list[Experience]:
         if match:
             experiences.append(Experience(declared_duration=match.group(0), confidence=0.45))
     return experiences
+
+
+def _clean_experience_title(value: str) -> str:
+    value = re.sub(r"^[•\-–—*\s]+", "", value)
+    value = re.sub(r"\s+", " ", value)
+    return value.strip(" :;-")
+
+
+def _is_professional_experience_title(title: str) -> bool:
+    normalized = normalize_text(title)
+    if len(normalized) < 3:
+        return False
+    education_markers = [
+        "bachelor", "baccalaureat", "cycle preparatoire", "diplome",
+        "ecole", "faculte", "formation", "ingenieur d etat", "licence",
+        "master", "universite",
+    ]
+    if any(marker in normalized for marker in education_markers):
+        return False
+    mission_starters = [
+        "conception", "creation", "developpement", "integration", "mise en place",
+        "patients", "python", "que l integration", "realisation",
+    ]
+    if any(normalized.startswith(marker) for marker in mission_starters):
+        return False
+    role_markers = [
+        "analyst", "analyste", "backend", "bi", "chef de projet",
+        "consultant", "data engineer", "data scientist", "developer",
+        "developpeur", "devops", "engineer", "frontend", "full stack",
+        "ingenieur", "intern", "lead", "manager", "project manager",
+        "responsable", "software", "stage", "stagiaire", "support",
+        "technicien",
+    ]
+    return any(marker in normalized for marker in role_markers)
 
 
 def _extract_mission_snippets(text: str) -> list[str]:

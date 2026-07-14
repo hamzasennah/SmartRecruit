@@ -16,7 +16,7 @@ class CategoryScore(BaseModel):
     matched: list[str] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
-    details: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    details: dict[str, str | int | float | bool | list[str]] = Field(default_factory=dict)
 
 
 class CandidateMatch(BaseModel):
@@ -27,4 +27,3 @@ class CandidateMatch(BaseModel):
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
-

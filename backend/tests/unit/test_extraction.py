@@ -1,4 +1,5 @@
 from app.schemas.document import DocumentText
+from app.services.extraction.cv_extractor import CVExtractor
 from app.services.extraction.job_extractor import JobExtractor
 
 
@@ -38,3 +39,37 @@ def test_job_extractor_keeps_data_analyst_requirements_from_realistic_job_sheet(
     assert job.experience_requirements.minimum_months == 12
     assert not any(item.lower().startswith("by it solution") for item in job.responsibilities)
     assert any("lead data workstream" in item.lower() for item in job.responsibilities)
+
+
+def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experiences() -> None:
+    text = """
+    Soufyane Candidat
+    Formation
+    Ingénieur d'État en Data & Logiciels 2021 - 2024
+    Master Informatique 2019 - 2021
+    Expérience
+    Développeur Full Stack janvier 2023 - décembre 2024
+    Reporting SQL et visualisation Azure pour des tableaux de suivi.
+    que l'intégration de pages utilisant des modèles d'IA 2022 - 2023
+    Python et NodeJS pour un backend robuste 2021 - 2022
+    """
+    document = DocumentText(
+        filename="soufyane.txt",
+        text=text,
+        char_count=len(text),
+        sections={
+            "education": "Ingénieur d'État en Data & Logiciels 2021 - 2024 Master Informatique 2019 - 2021",
+            "experience": (
+                "Développeur Full Stack janvier 2023 - décembre 2024\n"
+                "Reporting SQL et visualisation Azure pour des tableaux de suivi.\n"
+                "que l'intégration de pages utilisant des modèles d'IA 2022 - 2023\n"
+                "Python et NodeJS pour un backend robuste 2021 - 2022"
+            ),
+        },
+    )
+
+    cv = CVExtractor(DisabledLLM()).extract(document)
+
+    assert [experience.job_title for experience in cv.experiences] == ["Développeur Full Stack"]
+    assert all("master" not in (experience.job_title or "").lower() for experience in cv.experiences)
+    assert all("ingénieur d'état" not in (experience.job_title or "").lower() for experience in cv.experiences)
