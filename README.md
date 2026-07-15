@@ -20,28 +20,28 @@ Le projet contient uniquement le backend pour le moment.
 
 - Python 3.11 ou plus ;
 - Docker Compose pour PostgreSQL ;
-- environnement GPU avec vLLM ;
-- modele LLM : `Qwen/Qwen3.5-9B` ;
-- modele embeddings : `Qwen/Qwen3-Embedding-0.6B`.
+- Ollama pour servir Qwen sur CPU ;
+- modele LLM : `qwen2.5:7b` ;
+- modele embeddings : `qwen3-embedding:0.6b`.
 
 ## Configuration
 
 Exemple `.env` :
 
 ```env
-QWEN_BASE_URL=http://127.0.0.1:8000/v1
-QWEN_LLM_MODEL=Qwen/Qwen3.5-9B
-QWEN_EMBEDDING_BASE_URL=http://127.0.0.1:8003/v1
-QWEN_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
+QWEN_BASE_URL=http://127.0.0.1:11434/v1
+QWEN_LLM_MODEL=qwen2.5:7b
+QWEN_EMBEDDING_BASE_URL=http://127.0.0.1:11434/v1
+QWEN_EMBEDDING_MODEL=qwen3-embedding:0.6b
 DATABASE_URL=postgresql+psycopg2://smartrecruit:smartrecruit@localhost:5432/smartrecruit
 MAX_UPLOAD_MB=20
 ```
 
 Le backend utilise les services configures. Si Qwen, les embeddings ou PostgreSQL ne repondent pas, l'analyse retourne une erreur.
 
-## Lancement sur Lightning AI
+## Lancement CPU
 
-Terminal 1 — PostgreSQL :
+Terminal 1 - PostgreSQL :
 
 ```bash
 cd ~/SmartRecruit/backend
@@ -49,40 +49,22 @@ docker compose down
 docker compose up -d
 ```
 
-Terminal 2 — Qwen LLM :
+Terminal 2 - Serveur Qwen CPU :
 
 ```bash
 cd ~/SmartRecruit/backend
-python scripts/free_port.py 8000
-source .venv-vllm/bin/activate
-
-vllm serve Qwen/Qwen3.5-9B \
-  --host 127.0.0.1 \
-  --port 8000 \
-  --dtype auto \
-  --gpu-memory-utilization 0.90 \
-  --max-model-len 4096 \
-  --max-num-seqs 1 \
-  --enforce-eager
+python scripts/free_port.py 11434
+ollama serve
 ```
 
-Terminal 3 — Qwen embeddings :
+Terminal 3 - Modeles Qwen :
 
 ```bash
-cd ~/SmartRecruit/backend
-python scripts/free_port.py 8003
-source .venv-vllm/bin/activate
-
-vllm serve Qwen/Qwen3-Embedding-0.6B \
-  --host 127.0.0.1 \
-  --port 8003 \
-  --dtype auto \
-  --max-model-len 4096 \
-  --max-num-seqs 8 \
-  --enforce-eager
+ollama pull qwen2.5:7b
+ollama pull qwen3-embedding:0.6b
 ```
 
-Terminal 4 — FastAPI :
+Terminal 4 - FastAPI :
 
 ```bash
 cd ~/SmartRecruit/backend
@@ -111,7 +93,7 @@ Form-data :
 Tests unitaires :
 
 ```bash
-cd backend
+cd ~/SmartRecruit/backend
 pytest tests/unit tests/test_health.py
 python -m compileall app
 ```
@@ -119,7 +101,7 @@ python -m compileall app
 Tests d'integration avec Qwen, embeddings et PostgreSQL actifs :
 
 ```bash
-cd backend
+cd ~/SmartRecruit/backend
 export SMARTRECRUIT_RUN_INTEGRATION=1
 pytest tests/integration
 ```

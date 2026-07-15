@@ -31,19 +31,19 @@ class Settings:
 
     @property
     def llm_base_url(self) -> str:
-        return os.getenv("QWEN_BASE_URL", "http://127.0.0.1:8000/v1").strip().rstrip("/")
+        return os.getenv("QWEN_BASE_URL", "http://127.0.0.1:11434/v1").strip().rstrip("/")
 
     @property
     def llm_model(self) -> str:
-        return os.getenv("QWEN_LLM_MODEL", "Qwen/Qwen3.5-9B").strip()
+        return os.getenv("QWEN_LLM_MODEL", "qwen2.5:7b").strip()
 
     @property
     def embedding_base_url(self) -> str:
-        return os.getenv("QWEN_EMBEDDING_BASE_URL", "http://127.0.0.1:8003/v1").strip().rstrip("/")
+        return os.getenv("QWEN_EMBEDDING_BASE_URL", self.llm_base_url).strip().rstrip("/")
 
     @property
     def embedding_model(self) -> str:
-        return os.getenv("QWEN_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B").strip()
+        return os.getenv("QWEN_EMBEDDING_MODEL", "qwen3-embedding:0.6b").strip()
 
     @property
     def database_url(self) -> str:
