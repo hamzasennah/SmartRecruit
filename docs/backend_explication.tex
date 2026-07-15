@@ -38,7 +38,7 @@
     \textbf{Documentation technique du backend SmartRecruit}\\
     \large Système de classement de CV par fiche de poste
 }
-\author{Projet PFE -- Backend FastAPI, RAG, Qwen et Qdrant}
+\author{Projet PFE -- Backend FastAPI, RAG, Qwen et PostgreSQL}
 \date{\today}
 
 \begin{document}
@@ -57,7 +57,7 @@ Le backend de \textbf{SmartRecruit} est une application FastAPI qui analyse une 
     \item extraction structurée de la fiche de poste et des CV ;
     \item normalisation des compétences, langues, diplômes et intitulés ;
     \item indexation sémantique des sections de CV ;
-    \item recherche RAG avec embeddings Qwen et base vectorielle Qdrant ;
+    \item recherche RAG avec embeddings Qwen et stockage vectoriel PostgreSQL ;
     \item calcul de scores par catégories ;
     \item classement final avec preuves, forces, faiblesses et gestion des égalités.
 \end{itemize}
@@ -171,7 +171,7 @@ Deux extracteurs principaux sont utilisés :
     \item \texttt{CVExtractor} pour structurer chaque CV.
 \end{itemize}
 
-Le backend peut utiliser un LLM Qwen via un endpoint compatible OpenAI. En mode test, il utilise une extraction heuristique locale afin que les tests ne dépendent pas d'un serveur externe.
+Le backend utilise Qwen via un endpoint compatible OpenAI. Les extracteurs appellent le modèle configuré pour produire un JSON structuré, puis le backend valide et normalise ce JSON avant le scoring.
 
 \subsection{Étape 5 : normalisation}
 
@@ -187,9 +187,7 @@ Les données extraites sont normalisées pour éviter que des variantes d'écrit
 
 \subsection{Étape 6 : indexation vectorielle}
 
-Les sections des CV sont découpées en chunks. Chaque chunk est transformé en vecteur par le fournisseur d'embeddings Qwen. Ces vecteurs sont stockés dans Qdrant.
-
-En mode test, un fournisseur d'embeddings déterministe est utilisé pour obtenir des résultats reproductibles.
+Les sections des CV sont découpées en chunks. Chaque chunk est transformé en vecteur par le client d'embeddings Qwen. Ces vecteurs sont stockés dans PostgreSQL avec SQLAlchemy.
 
 \subsection{Étape 7 : recherche RAG}
 
@@ -202,7 +200,7 @@ Le backend construit une requête à partir de la fiche de poste :
     \item responsabilités nettoyées.
 \end{itemize}
 
-Cette requête est vectorisée, puis utilisée pour récupérer les passages les plus pertinents du CV dans Qdrant. Les résultats sont ensuite réordonnés par le reranker.
+Cette requête est vectorisée, puis utilisée pour récupérer les passages les plus pertinents du CV dans PostgreSQL par similarité cosinus entre vecteurs Qwen.
 
 \subsection{Étape 8 : matching et scoring}
 
@@ -240,17 +238,15 @@ Les candidats sont triés par score final décroissant. Si deux candidats ont ex
 \hline
 \texttt{backend/app/data} & Contient les fichiers JSON de référence : alias de compétences, niveaux de diplômes, niveaux de langues, poids du scoring. \\
 \hline
-\texttt{backend/app/database} & Prépare la couche base de données relationnelle. Elle est prévue pour la persistance future des analyses, documents ou candidats. \\
+\texttt{backend/app/database} & Définit la base SQLAlchemy et la table PostgreSQL utilisée pour stocker les chunks vectorisés. \\
 \hline
-\texttt{backend/app/providers} & Contient les connecteurs vers les composants externes : LLM, embeddings, reranker, base vectorielle, base SQL. \\
-\hline
-\texttt{backend/app/repositories} & Contient les classes d'accès aux données persistantes. Ces fichiers préparent une architecture propre si une base relationnelle complète est activée. \\
+\texttt{backend/app/infrastructure} & Contient les clients techniques vers Qwen et PostgreSQL : LLM, embeddings et stockage vectoriel SQLAlchemy. \\
 \hline
 \texttt{backend/app/schemas} & Définit les modèles Pydantic utilisés dans l'application : CV, fiche de poste, matching, ranking, document. \\
 \hline
 \texttt{backend/app/services} & Contient la logique métier principale : extraction, normalisation, RAG, matching, scoring et orchestration. \\
 \hline
-\texttt{backend/scripts} & Contient les scripts d'aide pour lancer ou préparer l'environnement : GPU, modèles, bases, serveur vLLM. \\
+\texttt{backend/scripts} & Contient les scripts d'aide pour lancer ou préparer l'environnement : GPU, modèles Ollama/Qwen, bases et backend. \\
 \hline
 \texttt{backend/tests} & Contient les tests unitaires et d'intégration du backend. \\
 \hline
@@ -269,15 +265,15 @@ Les candidats sont triés par score final décroissant. Si deux candidats ont ex
 \textbf{Fichier} & \textbf{Rôle} \\
 \hline
 \endhead
-\texttt{backend/requirements.txt} & Liste les dépendances Python nécessaires : FastAPI, Uvicorn, PyMuPDF, Qdrant, SQLAlchemy, pytest, etc. \\
+\texttt{backend/requirements.txt} & Liste les dépendances Python nécessaires : FastAPI, Uvicorn, PyMuPDF, SQLAlchemy, psycopg2, pytest, etc. \\
 \hline
-\texttt{backend/docker-compose.yml} & Prépare les services externes locaux comme Qdrant et PostgreSQL. \\
+\texttt{backend/docker-compose.yml} & Prépare le service PostgreSQL local. \\
 \hline
 \texttt{backend/app/main.py} & Point d'entrée FastAPI. Il crée l'application, configure CORS et inclut les routes. \\
 \hline
-\texttt{backend/app/config.py} & Centralise la configuration : chemins, URL des providers, modèles Qwen, collection Qdrant, mode test. \\
+\texttt{backend/app/config.py} & Centralise la configuration : chemins, URL Qwen, modèles Qwen, PostgreSQL et limite d'upload. \\
 \hline
-\texttt{backend/app/dependencies.py} & Assemble les dépendances principales : parser, LLM, embeddings, vector store, reranker et pipeline de classement. \\
+\texttt{backend/app/dependencies.py} & Assemble les dépendances principales : parser, client LLM Qwen, client embeddings Qwen, stockage vectoriel PostgreSQL et pipeline de classement. \\
 \hline
 \end{longtable}
 
@@ -392,11 +388,9 @@ Les candidats sont triés par score final décroissant. Si deux candidats ont ex
 \endhead
 \texttt{retrieval/chunk\_builder.py} & Découpe les sections en chunks utilisables pour l'indexation vectorielle. \\
 \hline
-\texttt{retrieval/section\_indexer.py} & Transforme les chunks en embeddings puis les insère dans la base vectorielle. \\
+\texttt{retrieval/section\_indexer.py} & Transforme les chunks en embeddings puis les insère dans le stockage vectoriel PostgreSQL. \\
 \hline
-\texttt{retrieval/semantic\_retriever.py} & Recherche les passages pertinents dans la base vectorielle à partir de la requête issue de la fiche de poste. \\
-\hline
-\texttt{retrieval/reranking\_pipeline.py} & Trie les résultats récupérés selon leur pertinence. \\
+\texttt{retrieval/semantic\_retriever.py} & Recherche les passages pertinents dans le stockage vectoriel PostgreSQL à partir de la requête issue de la fiche de poste. \\
 \hline
 \end{longtable}
 
@@ -453,22 +447,18 @@ Les candidats sont triés par score final décroissant. Si deux candidats ont ex
 \hline
 \end{longtable}
 
-\section{Providers}
+\section{Infrastructure}
 
 \begin{longtable}{|p{5cm}|p{9cm}|}
 \hline
 \textbf{Fichier} & \textbf{Rôle} \\
 \hline
 \endhead
-\texttt{providers/llm/qwen\_vllm\_provider.py} & Fournisseur LLM Qwen via endpoint compatible OpenAI. Utilisé pour générer du JSON structuré. \\
+\texttt{infrastructure/qwen\_llm.py} & Client LLM Qwen via endpoint compatible OpenAI. Utilisé pour générer du JSON structuré. \\
 \hline
-\texttt{providers/embeddings/qwen\_embedding\_provider.py} & Fournisseur d'embeddings Qwen. En mode test, utilise un embedding déterministe local. \\
+\texttt{infrastructure/qwen\_embeddings.py} & Client d'embeddings Qwen. Transforme les chunks et requêtes en vecteurs. \\
 \hline
-\texttt{providers/reranker/qwen\_reranker\_provider.py} & Réordonne les passages récupérés selon leur proximité avec la requête. \\
-\hline
-\texttt{providers/vector\_store/qdrant\_provider.py} & Connecte le backend à Qdrant. En mode test, utilise un vector store en mémoire. \\
-\hline
-\texttt{providers/database/postgres\_provider.py} & Prépare la connexion PostgreSQL. \\
+\texttt{infrastructure/postgres\_vector\_store.py} & Stocke les chunks vectorisés dans PostgreSQL avec SQLAlchemy et récupère les passages par similarité cosinus. \\
 \hline
 \end{longtable}
 
@@ -498,7 +488,7 @@ Les candidats sont triés par score final décroissant. Si deux candidats ont ex
 \textbf{Fichier} & \textbf{Rôle} \\
 \hline
 \endhead
-\texttt{tests/conftest.py} & Configure l'environnement de test, notamment le mode test. \\
+\texttt{tests/conftest.py} & Ajoute le backend au chemin Python pour exécuter les tests. \\
 \hline
 \texttt{tests/test\_health.py} & Vérifie que l'API répond correctement. \\
 \hline

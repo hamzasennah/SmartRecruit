@@ -1,6 +1,7 @@
 from pathlib import Path
 from uuid import uuid4
 
+from app.core.exceptions import ExternalServiceError
 from app.schemas.ranking import RankingResponse
 from app.services.orchestration.analyze_cv_pipeline import AnalyzeCVPipeline
 from app.services.orchestration.analyze_job_pipeline import AnalyzeJobPipeline
@@ -11,11 +12,11 @@ from app.services.scoring.scoring_engine import ScoringEngine
 
 
 class BatchRankingPipeline:
-    def __init__(self, parser, llm_provider, embedding_provider, vector_store, reranker) -> None:
-        self._job_pipeline = AnalyzeJobPipeline(parser, llm_provider)
-        self._cv_pipeline = AnalyzeCVPipeline(parser, llm_provider)
-        self._indexer = SectionIndexer(embedding_provider, vector_store)
-        self._retriever = SemanticRetriever(embedding_provider, vector_store, reranker)
+    def __init__(self, parser, llm_client, embedding_client, vector_store) -> None:
+        self._job_pipeline = AnalyzeJobPipeline(parser, llm_client)
+        self._cv_pipeline = AnalyzeCVPipeline(parser, llm_client)
+        self._indexer = SectionIndexer(embedding_client, vector_store)
+        self._retriever = SemanticRetriever(embedding_client, vector_store)
         self._vector_store = vector_store
         self._scoring = ScoringEngine()
         self._ranking = RankingEngine()
@@ -32,7 +33,8 @@ class BatchRankingPipeline:
                 self._indexer.index_sections(namespace, document.filename, document.sections)
                 evidence = self._retriever.retrieve(namespace, query, top_k=top_k, filters={"document_id": document.filename})
                 matches.append((self._scoring.score_candidate(document.filename, cv, job, evidence), cv))
+            except ExternalServiceError:
+                raise
             except Exception as exc:
                 errors.append(f"{Path(cv_path).name}: {exc}")
         return RankingResponse(job=job, total_candidates=len(matches), ranking=self._ranking.rank(matches), errors=errors)
-

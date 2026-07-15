@@ -30,20 +30,12 @@ class Settings:
     )
 
     @property
-    def test_mode(self) -> bool:
-        return os.getenv("SMARTRECRUIT_TEST_MODE", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-        }
-
-    @property
     def llm_base_url(self) -> str:
-        return os.getenv("QWEN_VLLM_BASE_URL", "http://localhost:8000/v1").strip().rstrip("/")
+        return os.getenv("QWEN_BASE_URL", "http://localhost:11434/v1").strip().rstrip("/")
 
     @property
     def llm_model(self) -> str:
-        return os.getenv("QWEN_LLM_MODEL", "Qwen/Qwen2.5-7B-Instruct").strip()
+        return os.getenv("QWEN_LLM_MODEL", "qwen2.5:3b").strip()
 
     @property
     def embedding_base_url(self) -> str:
@@ -51,19 +43,7 @@ class Settings:
 
     @property
     def embedding_model(self) -> str:
-        return os.getenv("QWEN_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B").strip()
-
-    @property
-    def reranker_model(self) -> str:
-        return os.getenv("QWEN_RERANKER_MODEL", "Qwen/Qwen3-Reranker-0.6B").strip()
-
-    @property
-    def qdrant_url(self) -> str:
-        return os.getenv("QDRANT_URL", "http://localhost:6333").strip()
-
-    @property
-    def qdrant_collection(self) -> str:
-        return os.getenv("QDRANT_COLLECTION", "smartrecruit_sections").strip()
+        return os.getenv("QWEN_EMBEDDING_MODEL", "qwen3-embedding:0.6b").strip()
 
     @property
     def database_url(self) -> str:
@@ -75,4 +55,3 @@ class Settings:
 
 
 settings = Settings()
-

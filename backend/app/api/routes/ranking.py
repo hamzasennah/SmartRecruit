@@ -4,7 +4,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.config import settings
 from app.core.constants import SUPPORTED_EXTENSIONS
-from app.core.exceptions import ProviderUnavailableError, SmartRecruitError
+from app.core.exceptions import ExternalServiceError, SmartRecruitError
 from app.dependencies import get_batch_ranking_pipeline
 from app.schemas.ranking import RankingResponse
 
@@ -17,7 +17,7 @@ async def analyze_ranking(job_file: UploadFile = File(...), cv_files: list[Uploa
     cv_paths = [await _save_upload(file, "cv_") for file in cv_files]
     try:
         return get_batch_ranking_pipeline().run(job_path, cv_paths, top_k=top_k)
-    except ProviderUnavailableError as exc:
+    except ExternalServiceError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except SmartRecruitError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -31,4 +31,3 @@ async def _save_upload(file: UploadFile, prefix: str) -> Path:
     target = settings.upload_dir / f"{prefix}{Path(file.filename or f'document{suffix}').name}"
     target.write_bytes(await file.read())
     return target
-

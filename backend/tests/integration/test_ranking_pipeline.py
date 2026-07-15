@@ -1,6 +1,15 @@
+import os
 from pathlib import Path
 
+import pytest
+
 from app.dependencies import get_batch_ranking_pipeline
+
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("SMARTRECRUIT_RUN_INTEGRATION") != "1",
+    reason="Integration test requires live Qwen endpoints and PostgreSQL.",
+)
 
 
 def test_batch_ranking_pipeline_with_text_files(tmp_path: Path) -> None:

@@ -100,7 +100,7 @@ def _candidate_passages(cv: StructuredCV, retrieved_evidence: list[dict] | None)
 def _is_relevant_retrieved_evidence(item: dict) -> bool:
     metadata = item.get("metadata", {}) or {}
     section = normalize_text(str(metadata.get("section", "")))
-    score = float(item.get("rerank_score", item.get("score", 0.0)))
+    score = float(item.get("score", 0.0))
     return section in ALLOWED_EVIDENCE_SECTIONS and score >= MIN_RETRIEVAL_EVIDENCE_SCORE
 
 

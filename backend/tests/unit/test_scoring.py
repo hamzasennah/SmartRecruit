@@ -182,12 +182,12 @@ def test_responsibilities_ignore_language_sections_and_low_retrieval_scores() ->
         retrieved_evidence=[
             {
                 "text": "Power BI Excel Foundry",
-                "rerank_score": 0.95,
+                "score": 0.95,
                 "metadata": {"section": "languages"},
             },
             {
                 "text": "Power BI Excel Foundry",
-                "rerank_score": 0.19,
+                "score": 0.19,
                 "metadata": {"section": "experience"},
             },
         ],
@@ -208,17 +208,17 @@ def test_scoring_engine_hides_irrelevant_or_weak_retrieved_evidence() -> None:
         retrieved_evidence=[
             {
                 "text": "Langues: francais anglais arabe",
-                "rerank_score": 0.99,
+                "score": 0.99,
                 "metadata": {"section": "languages"},
             },
             {
                 "text": "Power BI dashboard reporting.",
-                "rerank_score": 0.19,
+                "score": 0.19,
                 "metadata": {"section": "experience"},
             },
             {
                 "text": "Power BI dashboard reporting.",
-                "rerank_score": 0.31,
+                "score": 0.31,
                 "metadata": {"section": "experience"},
             },
         ],

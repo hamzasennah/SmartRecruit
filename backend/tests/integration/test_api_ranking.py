@@ -1,6 +1,15 @@
+import os
+
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("SMARTRECRUIT_RUN_INTEGRATION") != "1",
+    reason="Integration test requires live Qwen endpoints and PostgreSQL.",
+)
 
 
 def test_ranking_endpoint_with_text_uploads() -> None:

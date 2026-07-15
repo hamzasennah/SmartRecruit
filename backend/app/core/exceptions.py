@@ -6,10 +6,9 @@ class DocumentParsingError(SmartRecruitError):
     pass
 
 
-class ProviderUnavailableError(SmartRecruitError):
+class ExternalServiceError(SmartRecruitError):
     pass
 
 
 class OutputValidationError(SmartRecruitError):
     pass
-

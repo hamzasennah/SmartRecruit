@@ -4,11 +4,10 @@ from app.services.extraction.cv_extractor import CVExtractor
 
 
 class AnalyzeCVPipeline:
-    def __init__(self, parser: DoclingParser, llm_provider) -> None:
+    def __init__(self, parser: DoclingParser, llm_client) -> None:
         self._parser = parser
-        self._extractor = CVExtractor(llm_provider)
+        self._extractor = CVExtractor(llm_client)
 
     def run(self, path):
         document = self._parser.extract(path, kind=DocumentKind.cv)
         return document, self._extractor.extract(document)
-

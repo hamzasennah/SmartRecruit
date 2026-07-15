@@ -1,6 +1,6 @@
-print("Telechargez les modeles selon votre runtime vLLM/Hugging Face.")
-print("Exemples:")
-print("  Qwen/Qwen2.5-7B-Instruct")
-print("  Qwen/Qwen3-Embedding-0.6B")
-print("  Qwen/Qwen3-Reranker-0.6B")
-
+print("Modeles Qwen recommandes avec Ollama:")
+print("  ollama pull qwen2.5:3b")
+print("  ollama pull qwen3-embedding:0.6b")
+print("")
+print("Modele LLM plus qualitatif, si la machine le supporte:")
+print("  ollama pull qwen2.5:7b")

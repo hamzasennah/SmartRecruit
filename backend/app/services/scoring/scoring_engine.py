@@ -68,7 +68,7 @@ def _clean_retrieved_evidence(rows: list[dict]) -> list[Evidence]:
     for item in rows:
         metadata = item.get("metadata", {}) or {}
         section = normalize_text(str(metadata.get("section", "retrieval")))
-        score = float(item.get("rerank_score", item.get("score", 0.0)))
+        score = float(item.get("score", 0.0))
         if section not in DISPLAY_EVIDENCE_SECTIONS or score < MIN_DISPLAY_EVIDENCE_SCORE:
             continue
         evidence.append(
