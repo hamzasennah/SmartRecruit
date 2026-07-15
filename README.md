@@ -22,17 +22,11 @@ Le projet contient uniquement le backend pour le moment.
 - PostgreSQL ;
 - Ollama avec les modeles Qwen telecharges.
 
-Modele LLM plus leger, adapte a la machine actuelle :
-
-```powershell
-ollama pull qwen2.5:3b
-ollama pull qwen3-embedding:0.6b
-```
-
-Modele LLM plus qualitatif, si la machine le supporte :
+Modeles Qwen :
 
 ```powershell
 ollama pull qwen2.5:7b
+ollama pull qwen3-embedding:0.6b
 ```
 
 ## Lancement local
@@ -56,7 +50,7 @@ Exemple `.env` :
 
 ```env
 QWEN_BASE_URL=http://localhost:11434/v1
-QWEN_LLM_MODEL=qwen2.5:3b
+QWEN_LLM_MODEL=qwen2.5:7b
 QWEN_EMBEDDING_BASE_URL=http://localhost:11434/v1
 QWEN_EMBEDDING_MODEL=qwen3-embedding:0.6b
 DATABASE_URL=postgresql+psycopg2://smartrecruit:smartrecruit@localhost:5432/smartrecruit

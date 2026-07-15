@@ -1,6 +1,3 @@
 print("Modeles Qwen recommandes avec Ollama:")
-print("  ollama pull qwen2.5:3b")
-print("  ollama pull qwen3-embedding:0.6b")
-print("")
-print("Modele LLM plus qualitatif, si la machine le supporte:")
 print("  ollama pull qwen2.5:7b")
+print("  ollama pull qwen3-embedding:0.6b")

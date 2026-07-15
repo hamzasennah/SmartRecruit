@@ -35,7 +35,7 @@ class Settings:
 
     @property
     def llm_model(self) -> str:
-        return os.getenv("QWEN_LLM_MODEL", "qwen2.5:3b").strip()
+        return os.getenv("QWEN_LLM_MODEL", "qwen2.5:7b").strip()
 
     @property
     def embedding_base_url(self) -> str:
