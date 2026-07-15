@@ -1,3 +1,5 @@
-print("Modeles Qwen recommandes avec Ollama:")
-print("  ollama pull qwen2.5:7b")
-print("  ollama pull qwen3-embedding:0.6b")
+print("Modeles Qwen attendus dans l'environnement vLLM / Lightning AI:")
+print("  Qwen/Qwen3.5-9B")
+print("  Qwen/Qwen3-Embedding-0.6B")
+print("")
+print("Ces modeles sont charges par vLLM depuis le cache ou le hub Hugging Face de la machine cloud.")
