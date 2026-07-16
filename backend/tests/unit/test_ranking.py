@@ -18,7 +18,7 @@ def test_ranking_engine_marks_equal_scores_as_tied() -> None:
 
     assert [item.rank for item in ranking] == [1, 1, 3]
     assert [item.is_tied for item in ranking] == [True, True, False]
-    assert [item.rank_label for item in ranking] == ["1 ex aequo", "1 ex aequo", "3"]
+    assert [item.rank_label for item in ranking] == ["1 ex æquo", "1 ex æquo", "3"]
 
 
 def test_ranking_engine_marks_tiny_score_differences_as_tied() -> None:
@@ -34,4 +34,4 @@ def test_ranking_engine_marks_tiny_score_differences_as_tied() -> None:
 
     assert [item.rank for item in ranking] == [1, 1]
     assert [item.is_tied for item in ranking] == [True, True]
-    assert [item.rank_label for item in ranking] == ["1 ex aequo", "1 ex aequo"]
+    assert [item.rank_label for item in ranking] == ["1 ex æquo", "1 ex æquo"]

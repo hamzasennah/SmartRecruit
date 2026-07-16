@@ -34,7 +34,7 @@ def _build_html(data: dict, extracted_texts: list[dict]) -> str:
             rows.append(
                 f"""
                 <tr>
-                  <td class="rank">{escape(str(item.get("rank_label") or item.get("rank")))}</td>
+                  <td class="rank">{escape(_rank_label(item))}</td>
                   <td><strong>{escape(name)}</strong><br><span class="muted">{escape(candidate.get("filename", ""))}</span></td>
                   <td><span class="score {_score_class(score)}">{score:.2f}%</span></td>
                   <td>{escape("; ".join(candidate.get("strengths") or []) or "Aucune force majeure")}</td>
@@ -82,7 +82,7 @@ h1 {{ margin: 0 0 6px; font-size: 32px; }}
 table {{ width: 100%; border-collapse: collapse; }}
 th, td {{ text-align: left; padding: 14px; border-bottom: 1px solid #e5ebe8; vertical-align: top; }}
 th {{ color: #52615a; font-size: 13px; text-transform: uppercase; }}
-.rank {{ font-size: 22px; font-weight: 700; color: #1f7665; }}
+.rank {{ min-width: 112px; white-space: nowrap; font-size: 22px; font-weight: 700; color: #1f7665; }}
 .score {{ display: inline-block; min-width: 72px; padding: 7px 10px; border-radius: 6px; color: white; text-align: center; font-weight: 700; }}
 .good {{ background: #1f8a5b; }} .mid {{ background: #b68122; }} .low {{ background: #8f3d32; }}
 .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }}
@@ -263,6 +263,11 @@ def _errors_section(errors: list[str]) -> str:
       <ul>{_list_items(errors)}</ul>
     </section>
     """
+
+
+def _rank_label(item: dict) -> str:
+    label = str(item.get("rank_label") or item.get("rank") or "")
+    return label.replace("ex aequo", "ex æquo")
 
 
 def _list_items(values: list | None) -> str:

@@ -18,7 +18,7 @@ class RankingEngine:
                 ranked.append(
                     RankedCandidate(
                         rank=current_rank,
-                        rank_label=f"{current_rank} ex aequo" if is_tied else str(current_rank),
+                        rank_label=f"{current_rank} ex æquo" if is_tied else str(current_rank),
                         is_tied=is_tied,
                         candidate=match,
                         structured_cv=cv,
