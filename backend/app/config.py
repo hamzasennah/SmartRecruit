@@ -30,20 +30,49 @@ class Settings:
     )
 
     @property
-    def llm_base_url(self) -> str:
-        return os.getenv("QWEN_BASE_URL", "http://127.0.0.1:11434/v1").strip().rstrip("/")
+    def nvidia_api_key(self) -> str:
+        return os.getenv("NVIDIA_API_KEY", "").strip()
+
+    @property
+    def nvidia_base_url(self) -> str:
+        return os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1").strip().rstrip("/")
 
     @property
     def llm_model(self) -> str:
-        return os.getenv("QWEN_LLM_MODEL", "qwen2.5:7b").strip()
+        return os.getenv("NVIDIA_LLM_MODEL", "meta/llama-3.1-8b-instruct").strip()
 
     @property
     def embedding_base_url(self) -> str:
-        return os.getenv("QWEN_EMBEDDING_BASE_URL", self.llm_base_url).strip().rstrip("/")
+        return os.getenv("NVIDIA_EMBEDDING_BASE_URL", self.nvidia_base_url).strip().rstrip("/")
 
     @property
     def embedding_model(self) -> str:
-        return os.getenv("QWEN_EMBEDDING_MODEL", "qwen3-embedding:0.6b").strip()
+        return os.getenv("NVIDIA_EMBEDDING_MODEL", "nvidia/llama-nemotron-embed-1b-v2").strip()
+
+    @property
+    def llm_timeout(self) -> float:
+        return float(os.getenv("NVIDIA_TIMEOUT", "120"))
+
+    @property
+    def llm_max_retries(self) -> int:
+        return int(os.getenv("NVIDIA_MAX_RETRIES", "2"))
+
+    @property
+    def llm_retry_delay(self) -> float:
+        return float(os.getenv("NVIDIA_RETRY_DELAY", "2"))
+
+    @property
+    def llm_max_tokens(self) -> int:
+        return int(os.getenv("NVIDIA_MAX_TOKENS", "1400"))
+
+    @property
+    def llm_temperature(self) -> float:
+        return float(os.getenv("NVIDIA_TEMPERATURE", "0.0"))
+
+    @property
+    def embedding_dimensions(self) -> int | None:
+        value = os.getenv("NVIDIA_EMBEDDING_DIMENSIONS", "").strip()
+        return int(value) if value else None
 
     @property
     def database_url(self) -> str:

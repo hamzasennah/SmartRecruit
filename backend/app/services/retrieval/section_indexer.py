@@ -8,6 +8,6 @@ class SectionIndexer:
 
     def index_sections(self, namespace: str, document_id: str, sections: dict[str, str]) -> list[dict]:
         chunks = build_section_chunks(document_id, sections)
-        vectors = self._embedding_client.embed([chunk["text"] for chunk in chunks])
+        vectors = self._embedding_client.embed_passages([chunk["text"] for chunk in chunks])
         self._vector_store.upsert(namespace, chunks, vectors)
         return chunks

@@ -1,5 +1,0 @@
-print("Modeles Qwen CPU attendus avec Ollama:")
-print("  ollama pull qwen2.5:7b")
-print("  ollama pull qwen3-embedding:0.6b")
-print("")
-print("Ces modeles sont utilises par le backend via les endpoints OpenAI-compatible d'Ollama.")

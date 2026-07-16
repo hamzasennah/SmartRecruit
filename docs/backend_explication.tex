@@ -38,7 +38,7 @@
     \textbf{Documentation technique du backend SmartRecruit}\\
     \large Système de classement de CV par fiche de poste
 }
-\author{Projet PFE -- Backend FastAPI, RAG, Qwen et PostgreSQL}
+\author{Projet PFE -- Backend FastAPI, RAG, NVIDIA API et PostgreSQL}
 \date{\today}
 
 \begin{document}
@@ -57,7 +57,7 @@ Le backend de \textbf{SmartRecruit} est une application FastAPI qui analyse une 
     \item extraction structurée de la fiche de poste et des CV ;
     \item normalisation des compétences, langues, diplômes et intitulés ;
     \item indexation sémantique des sections de CV ;
-    \item recherche RAG avec embeddings Qwen et stockage vectoriel PostgreSQL ;
+    \item recherche RAG avec embeddings NVIDIA et stockage vectoriel PostgreSQL ;
     \item calcul de scores par catégories ;
     \item classement final avec preuves, forces, faiblesses et gestion des égalités.
 \end{itemize}
@@ -171,7 +171,7 @@ Deux extracteurs principaux sont utilisés :
     \item \texttt{CVExtractor} pour structurer chaque CV.
 \end{itemize}
 
-Le backend utilise Qwen via un endpoint compatible OpenAI. Les extracteurs appellent le modèle configuré pour produire un JSON structuré, puis le backend valide et normalise ce JSON avant le scoring.
+Le backend utilise NVIDIA API via un endpoint compatible OpenAI. Les extracteurs appellent le modèle configuré pour produire un JSON structuré, puis le backend valide et normalise ce JSON avant le scoring.
 
 \subsection{Étape 5 : normalisation}
 
@@ -187,7 +187,7 @@ Les données extraites sont normalisées pour éviter que des variantes d'écrit
 
 \subsection{Étape 6 : indexation vectorielle}
 
-Les sections des CV sont découpées en chunks. Chaque chunk est transformé en vecteur par le client d'embeddings Qwen. Ces vecteurs sont stockés dans PostgreSQL avec SQLAlchemy.
+Les sections des CV sont découpées en chunks. Chaque chunk est transformé en vecteur par le client d'embeddings NVIDIA. Ces vecteurs sont stockés dans PostgreSQL avec SQLAlchemy.
 
 \subsection{Étape 7 : recherche RAG}
 
@@ -200,7 +200,7 @@ Le backend construit une requête à partir de la fiche de poste :
     \item responsabilités nettoyées.
 \end{itemize}
 
-Cette requête est vectorisée, puis utilisée pour récupérer les passages les plus pertinents du CV dans PostgreSQL par similarité cosinus entre vecteurs Qwen.
+Cette requête est vectorisée, puis utilisée pour récupérer les passages les plus pertinents du CV dans PostgreSQL par similarité cosinus entre vecteurs NVIDIA.
 
 \subsection{Étape 8 : matching et scoring}
 
@@ -240,13 +240,13 @@ Les candidats sont triés par score final décroissant. Si deux candidats ont ex
 \hline
 \texttt{backend/app/database} & Définit la base SQLAlchemy et la table PostgreSQL utilisée pour stocker les chunks vectorisés. \\
 \hline
-\texttt{backend/app/infrastructure} & Contient les clients techniques vers Qwen et PostgreSQL : LLM, embeddings et stockage vectoriel SQLAlchemy. \\
+\texttt{backend/app/infrastructure} & Contient les clients techniques vers NVIDIA API et PostgreSQL : LLM, embeddings et stockage vectoriel SQLAlchemy. \\
 \hline
 \texttt{backend/app/schemas} & Définit les modèles Pydantic utilisés dans l'application : CV, fiche de poste, matching, ranking, document. \\
 \hline
 \texttt{backend/app/services} & Contient la logique métier principale : extraction, normalisation, RAG, matching, scoring et orchestration. \\
 \hline
-\texttt{backend/scripts} & Contient les scripts d'aide pour lancer ou préparer l'environnement CPU : Qwen via Ollama, PostgreSQL et backend. \\
+\texttt{backend/scripts} & Contient les scripts d'aide pour lancer ou préparer l'environnement : test NVIDIA API, PostgreSQL et backend. \\
 \hline
 \texttt{backend/tests} & Contient les tests unitaires et d'intégration du backend. \\
 \hline
@@ -271,9 +271,9 @@ Les candidats sont triés par score final décroissant. Si deux candidats ont ex
 \hline
 \texttt{backend/app/main.py} & Point d'entrée FastAPI. Il crée l'application, configure CORS et inclut les routes. \\
 \hline
-\texttt{backend/app/config.py} & Centralise la configuration : chemins, URL Qwen, modèles Qwen, PostgreSQL et limite d'upload. \\
+\texttt{backend/app/config.py} & Centralise la configuration : chemins, clé et URL NVIDIA, modèles NVIDIA, PostgreSQL et limite d'upload. \\
 \hline
-\texttt{backend/app/dependencies.py} & Assemble les dépendances principales : parser, client LLM Qwen, client embeddings Qwen, stockage vectoriel PostgreSQL et pipeline de classement. \\
+\texttt{backend/app/dependencies.py} & Assemble les dépendances principales : parser, client LLM NVIDIA, client embeddings NVIDIA, stockage vectoriel PostgreSQL et pipeline de classement. \\
 \hline
 \end{longtable}
 
@@ -454,9 +454,9 @@ Les candidats sont triés par score final décroissant. Si deux candidats ont ex
 \textbf{Fichier} & \textbf{Rôle} \\
 \hline
 \endhead
-\texttt{infrastructure/qwen\_llm.py} & Client LLM Qwen via endpoint compatible OpenAI. Utilisé pour générer du JSON structuré. \\
+\texttt{infrastructure/nvidia\_llm.py} & Client LLM NVIDIA via endpoint compatible OpenAI. Utilisé pour générer du JSON structuré. \\
 \hline
-\texttt{infrastructure/qwen\_embeddings.py} & Client d'embeddings Qwen. Transforme les chunks et requêtes en vecteurs. \\
+\texttt{infrastructure/nvidia\_embeddings.py} & Client d'embeddings NVIDIA. Transforme les chunks et requêtes en vecteurs. \\
 \hline
 \texttt{infrastructure/postgres\_vector\_store.py} & Stocke les chunks vectorisés dans PostgreSQL avec SQLAlchemy et récupère les passages par similarité cosinus. \\
 \hline

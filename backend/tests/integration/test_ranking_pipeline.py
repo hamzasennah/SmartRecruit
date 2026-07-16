@@ -8,7 +8,7 @@ from app.dependencies import get_batch_ranking_pipeline
 
 pytestmark = pytest.mark.skipif(
     os.getenv("SMARTRECRUIT_RUN_INTEGRATION") != "1",
-    reason="Integration test requires live Qwen endpoints and PostgreSQL.",
+    reason="Integration test requires NVIDIA API and PostgreSQL.",
 )
 
 
