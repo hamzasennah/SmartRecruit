@@ -12,6 +12,8 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from scripts.render_result_report import render_report
+from app.schemas.document import DocumentKind
+from app.services.documents.docling_parser import DoclingParser
 
 
 def main() -> None:
@@ -28,6 +30,7 @@ def main() -> None:
     cv_paths = [_existing_path(path) for path in args.cv_file]
     result_path = BACKEND_ROOT / args.json_output
     report_path = BACKEND_ROOT / args.html_output
+    extracted_texts = _extract_input_texts(job_path, cv_paths)
 
     print("Analyse en cours...")
     print(f"Fiche de poste: {job_path}")
@@ -63,7 +66,7 @@ def main() -> None:
     else:
         print("Analyse terminee.")
 
-    render_report(result_path, report_path)
+    render_report(result_path, report_path, extracted_texts=extracted_texts)
     print(f"JSON: {result_path}")
     print(f"Rapport HTML: {report_path}")
     webbrowser.open(report_path.resolve().as_uri())
@@ -76,6 +79,25 @@ def _existing_path(value: str) -> Path:
     if not path.exists():
         raise FileNotFoundError(f"Fichier introuvable: {path}")
     return path
+
+
+def _extract_input_texts(job_path: Path, cv_paths: list[Path]) -> list[dict]:
+    parser = DoclingParser()
+    documents = [
+        ("Fiche de poste", parser.extract(job_path, kind=DocumentKind.job)),
+    ]
+    for index, cv_path in enumerate(cv_paths, start=1):
+        documents.append((f"CV {index}", parser.extract(cv_path, kind=DocumentKind.cv)))
+    return [
+        {
+            "label": label,
+            "filename": document.filename,
+            "char_count": document.char_count,
+            "text": document.text,
+            "sections": document.sections,
+        }
+        for label, document in documents
+    ]
 
 
 if __name__ == "__main__":

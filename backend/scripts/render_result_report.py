@@ -5,16 +5,18 @@ from html import escape
 from pathlib import Path
 
 
-def render_report(result_path: Path, output_path: Path) -> Path:
+def render_report(result_path: Path, output_path: Path, extracted_texts: list[dict] | None = None) -> Path:
     data = json.loads(result_path.read_text(encoding="utf-8"))
-    html = _build_html(data)
+    html = _build_html(data, extracted_texts or [])
     output_path.write_text(html, encoding="utf-8")
     return output_path
 
 
-def _build_html(data: dict) -> str:
+def _build_html(data: dict, extracted_texts: list[dict]) -> str:
+    extraction_section = _extracted_text_section(extracted_texts)
     if "detail" in data:
         body = f"""
+        {extraction_section}
         <section class="error">
           <h2>Erreur</h2>
           <p>{escape(str(data["detail"]))}</p>
@@ -43,6 +45,7 @@ def _build_html(data: dict) -> str:
 
         required_skills = job.get("required_skills") or {}
         body = f"""
+        {extraction_section}
         <section class="card">
           <h2>Fiche de poste</h2>
           <p><strong>Poste :</strong> {escape(str(job.get("job_title") or "Non precise"))}</p>
@@ -92,6 +95,13 @@ ul {{ margin-top: 6px; padding-left: 20px; }}
 .evidence li {{ margin-bottom: 14px; }}
 .pill {{ display:inline-block; padding:4px 8px; background:#e2f2ed; color:#1f7665; border-radius:999px; font-size:12px; font-weight:700; }}
 .error {{ max-width: 800px; margin: 40px auto; padding: 22px; background: #fff2f0; border: 1px solid #ffc7bd; border-radius: 8px; }}
+.text-panel {{ margin: 14px 0; border: 1px solid #dfe7e3; border-radius: 8px; overflow: hidden; }}
+details summary {{ cursor: pointer; padding: 14px; background: #f0f5f3; font-weight: 700; }}
+.meta {{ display:flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }}
+.meta span {{ background:#eef3f1; padding:6px 9px; border-radius:6px; color:#52615a; font-size:13px; }}
+pre {{ margin: 0; padding: 16px; background: #101816; color: #e8f2ee; overflow: auto; white-space: pre-wrap; max-height: 520px; line-height: 1.45; }}
+.sections {{ padding: 0 16px 16px; }}
+.section-preview {{ border-left: 3px solid #1f7665; margin: 12px 0; padding-left: 10px; }}
 </style>
 </head>
 <body>
@@ -148,6 +158,53 @@ def _candidate_detail(name: str, score: float, candidate: dict) -> str:
     """
 
 
+def _extracted_text_section(documents: list[dict]) -> str:
+    if not documents:
+        return ""
+    panels = []
+    for document in documents:
+        sections = document.get("sections") or {}
+        section_blocks = []
+        for section_name, section_text in sections.items():
+            preview = str(section_text).strip()
+            if not preview:
+                continue
+            section_blocks.append(
+                f"""
+                <div class="section-preview">
+                  <h4>{escape(str(section_name))}</h4>
+                  <p>{escape(preview[:900])}</p>
+                </div>
+                """
+            )
+        panels.append(
+            f"""
+            <div class="text-panel">
+              <details>
+                <summary>{escape(document.get("label", "Document"))} - {escape(document.get("filename", ""))}</summary>
+                <div class="sections">
+                  <div class="meta">
+                    <span>{int(document.get("char_count") or 0)} caracteres extraits</span>
+                    <span>{len(sections)} sections detectees</span>
+                  </div>
+                  <h3>Sections detectees</h3>
+                  {"".join(section_blocks) or '<p class="muted">Aucune section detectee.</p>'}
+                  <h3>Texte brut extrait complet</h3>
+                </div>
+                <pre>{escape(str(document.get("text", "")))}</pre>
+              </details>
+            </div>
+            """
+        )
+    return f"""
+    <section class="card">
+      <h2>Texte extrait des documents</h2>
+      <p class="muted">Cette section montre le texte obtenu avant l'appel au modele et avant le scoring.</p>
+      {"".join(panels)}
+    </section>
+    """
+
+
 def _list_items(values: list | None) -> str:
     if not values:
         return '<span class="muted">Aucun</span>'
@@ -160,4 +217,3 @@ def _score_class(score: float) -> str:
     if score >= 40:
         return "mid"
     return "low"
-
