@@ -63,7 +63,7 @@ class Settings:
 
     @property
     def llm_max_tokens(self) -> int:
-        return int(os.getenv("NVIDIA_MAX_TOKENS", "1400"))
+        return int(os.getenv("NVIDIA_MAX_TOKENS", "8192"))
 
     @property
     def llm_temperature(self) -> float:

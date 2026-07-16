@@ -58,7 +58,21 @@ class NvidiaLLMClient:
         try:
             content = response["choices"][0]["message"]["content"]
             return _loads_json(content)
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ExternalServiceError("La reponse NVIDIA LLM n'a pas le format attendu.") from exc
+        except json.JSONDecodeError as exc:
+            finish_reason = _finish_reason(response)
+            preview = str(content)[-600:]
+            logger.error(
+                "JSON NVIDIA invalide. finish_reason=%s, longueur=%s, fin_reponse=%r",
+                finish_reason,
+                len(str(content)),
+                preview,
+            )
+            if finish_reason == "length":
+                raise ExternalServiceError(
+                    "La reponse NVIDIA LLM est tronquee. Augmentez NVIDIA_MAX_TOKENS dans .env."
+                ) from exc
             raise ExternalServiceError("La reponse NVIDIA LLM n'est pas un JSON exploitable.") from exc
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -123,3 +137,10 @@ def _loads_json(text: str) -> dict[str, Any]:
         if start == -1 or end <= start:
             raise
         return json.loads(candidate[start:end + 1])
+
+
+def _finish_reason(response: dict[str, Any]) -> str | None:
+    try:
+        return response["choices"][0].get("finish_reason")
+    except (KeyError, IndexError, TypeError):
+        return None

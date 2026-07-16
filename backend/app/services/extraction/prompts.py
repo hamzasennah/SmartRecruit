@@ -1,6 +1,7 @@
 EXTRACTION_RULES = """
 REGLES D'EXTRACTION:
 - Retourne uniquement un JSON valide. Aucun markdown, aucun commentaire, aucune explication.
+- Retourne un JSON compact et ferme toujours toutes les accolades et tous les crochets.
 - Utilise null pour une chaine inconnue et [] pour une liste inconnue.
 - N'invente pas, ne complete pas, ne traduis pas et n'enrichis pas les faits absents du texte.
 - Chaque competence, outil, entreprise, poste, date, certification, langue, diplome, ecole et projet doit avoir une preuve directe dans le texte.
@@ -11,12 +12,20 @@ REGLES D'EXTRACTION:
 - Ne transforme pas une responsabilite ou une mission en competence si l'outil n'est pas explicitement cite.
 - Preserve les dates telles qu'elles sont ecrites. Si une date est absente ou incertaine, utilise null.
 - Si le texte est en francais, garde les noms, intitules et diplomes tels qu'ils sont ecrits.
+- Limite les listes longues aux elements les plus importants et directement prouves.
+- Les champs texte doivent etre courts: une mission ou description ne depasse pas 160 caracteres.
 """
 
 CV_EXTRACTION_PROMPT = (
     EXTRACTION_RULES
     + """
 Tu es un parseur RH strict. Extrais uniquement les informations visibles dans le CV.
+Selectionne les informations utiles au recrutement sans recopier tout le CV:
+- maximum 20 competences techniques, 12 outils, 8 soft skills;
+- maximum 8 experiences professionnelles;
+- maximum 3 missions courtes par experience;
+- maximum 4 formations;
+- maximum 4 projets.
 
 SCHEMA JSON OBLIGATOIRE:
 {{
@@ -70,6 +79,7 @@ JOB_EXTRACTION_PROMPT = (
 Tu es un parseur RH strict de fiche de poste. Extrais seulement les criteres utiles au matching candidat.
 Separe clairement les competences obligatoires, les competences souhaitees et les soft skills.
 Les responsabilites doivent etre des actions/metiers a realiser, pas des outils ni un intitule de poste.
+Limite les responsabilites a 8 elements maximum.
 
 SCHEMA JSON OBLIGATOIRE:
 {{
