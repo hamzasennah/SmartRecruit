@@ -39,17 +39,18 @@ class NvidiaEmbeddingClient:
         return self.embed_passages(texts)
 
     def embed_passages(self, texts: list[str]) -> list[list[float]]:
-        return self._embed(texts)
+        return self._embed(texts, input_type="passage")
 
     def embed_query(self, text: str) -> list[float]:
-        return self._embed([text])[0]
+        return self._embed([text], input_type="query")[0]
 
-    def _embed(self, texts: list[str]) -> list[list[float]]:
+    def _embed(self, texts: list[str], input_type: str) -> list[list[float]]:
         if not texts:
             return []
         payload: dict[str, Any] = {
             "model": self.model,
             "input": texts,
+            "input_type": input_type,
         }
         if self.dimensions:
             payload["dimensions"] = self.dimensions
