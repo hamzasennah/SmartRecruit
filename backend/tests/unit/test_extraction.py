@@ -43,7 +43,7 @@ def test_job_extractor_cleans_realistic_job_sheet_responsibilities() -> None:
     job = JobExtractor(StaticLLM(llm_payload)).extract(document)
 
     assert job.required_skills.mandatory == ["power bi", "excel", "dashboard", "kpi", "snowflake", "azure"]
-    assert job.required_skills.preferred == ["foundry", "project management", "business needs"]
+    assert job.required_skills.preferred == ["foundry", "project management", "business needs", "spm", "itms"]
     assert job.experience_requirements.minimum_months == 12
     assert job.responsibilities == [
         "Creer et ameliorer les tableaux de bord et KPI.",
@@ -51,6 +51,34 @@ def test_job_extractor_cleans_realistic_job_sheet_responsibilities() -> None:
         "Clarifier les besoins metiers et assurer leur couverture.",
         "Garantir la disponibilite des donnees dans Snowflake/Azure.",
     ]
+
+
+def test_job_extractor_moves_languages_out_of_technical_skills_and_infers_title() -> None:
+    text = """
+    Sensitivity: C1-Internal
+    Data analyst packaging tool (SPM)
+    Skills:
+    fluent French & English
+    excel power bi and snowflake are a must, foundry would be good
+    autonomy (leadership, self-driven) is a must
+    """
+    document = DocumentText(filename="fiche_de_poste.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "job_title": None,
+        "required_skills": {
+            "mandatory": ["Power BI", "Excel", "Snowflake", "French", "English"],
+            "preferred": ["Foundry"],
+            "soft": ["project management"],
+        },
+    }
+
+    job = JobExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert job.job_title == "Data analyst packaging tool (SPM)"
+    assert job.required_skills.mandatory == ["power bi", "excel", "snowflake"]
+    assert job.required_skills.preferred == ["foundry", "spm"]
+    assert job.required_skills.soft == ["autonomy", "leadership", "self driven"]
+    assert [language.language for language in job.language_requirements] == ["francais", "anglais"]
 
 
 def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experiences() -> None:

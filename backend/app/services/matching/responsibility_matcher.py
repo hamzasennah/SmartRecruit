@@ -48,7 +48,7 @@ CONCEPT_GROUPS = {
     },
     "business_needs": {
         "responsibility": {"business needs", "besoins", "metiers", "clarifier", "couverture"},
-        "evidence": {"besoins", "metiers", "utilisateur", "fonctionnel", "client", "couverture"},
+        "evidence": {"besoins", "metiers", "fonctionnel", "cahier", "specifications", "requirements", "couverture", "clarifier"},
     },
     "automation": {
         "responsibility": {"automatisation", "automatiser", "flux"},
@@ -61,7 +61,7 @@ def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retr
     if not job.responsibilities:
         return {"applicable": False, "score": 0.0, "matched": [], "missing": [], "details": {}}
     passages = _candidate_passages(cv, retrieved_evidence)
-    matched, partial, missing, matched_evidence, scored = [], [], [], [], []
+    matched, partial, missing, matched_evidence, partial_evidence, scored = [], [], [], [], [], []
     for responsibility in job.responsibilities:
         best = _best_passage_match(responsibility, passages)
         scored.append({key: best[key] for key in ["responsibility", "score", "status", "evidence"]})
@@ -70,6 +70,7 @@ def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retr
             matched_evidence.append(best["evidence"])
         elif best["status"] == "partial":
             partial.append(responsibility)
+            partial_evidence.append(best["evidence"])
         else:
             missing.append(responsibility)
     score = sum(item["score"] for item in scored) / len(job.responsibilities)
@@ -83,6 +84,7 @@ def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retr
             "candidate_passage_count": len(passages),
             "matched_evidence": matched_evidence[:5],
             "partial": partial,
+            "partial_evidence": partial_evidence[:5],
             "responsibility_scores": scored,
         },
     }

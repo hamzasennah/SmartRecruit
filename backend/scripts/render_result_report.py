@@ -94,6 +94,12 @@ h3 {{ margin-bottom: 8px; }} h4 {{ margin: 8px 0; color:#52615a; }}
 ul {{ margin-top: 6px; padding-left: 20px; }}
 .evidence li {{ margin-bottom: 14px; }}
 .pill {{ display:inline-block; padding:4px 8px; background:#e2f2ed; color:#1f7665; border-radius:999px; font-size:12px; font-weight:700; }}
+.pill.full {{ background:#dff3e8; color:#1f8a5b; }}
+.pill.partial {{ background:#fff3d6; color:#946317; }}
+.pill.none {{ background:#f8e1dd; color:#8f3d32; }}
+.detail-cols {{ margin-top: 10px; padding-top: 10px; border-top: 1px solid #e5ebe8; }}
+.mini-table {{ margin-top: 8px; font-size: 13px; }}
+.mini-table th, .mini-table td {{ padding: 8px; }}
 .error {{ max-width: 800px; margin: 40px auto; padding: 22px; background: #fff2f0; border: 1px solid #ffc7bd; border-radius: 8px; }}
 .text-panel {{ margin: 14px 0; border: 1px solid #dfe7e3; border-radius: 8px; overflow: hidden; }}
 details summary {{ cursor: pointer; padding: 14px; background: #f0f5f3; font-weight: 700; }}
@@ -118,6 +124,8 @@ def _candidate_detail(name: str, score: float, candidate: dict) -> str:
     categories = []
     for category in candidate.get("category_scores", []):
         category_score = float(category.get("score") or 0)
+        details = category.get("details") or {}
+        extra_blocks = _category_extra_blocks(category.get("name", ""), details)
         categories.append(
             f"""
             <div class="cat">
@@ -127,6 +135,7 @@ def _candidate_detail(name: str, score: float, candidate: dict) -> str:
                 <div><h4>Correspondances</h4><ul>{_list_items(category.get("matched"))}</ul></div>
                 <div><h4>Manquants</h4><ul>{_list_items(category.get("missing"))}</ul></div>
               </div>
+              {extra_blocks}
             </div>
             """
         )
@@ -156,6 +165,43 @@ def _candidate_detail(name: str, score: float, candidate: dict) -> str:
       <ul class="evidence">{"".join(evidence) or '<li class="muted">Aucune preuve affichee</li>'}</ul>
     </section>
     """
+
+
+def _category_extra_blocks(category_name: str, details: dict) -> str:
+    if category_name == "technical_skills":
+        return f"""
+        <div class="cols detail-cols">
+          <div><h4>Obligatoires trouves</h4><ul>{_list_items(details.get("matched_mandatory"))}</ul></div>
+          <div><h4>Obligatoires manquants</h4><ul>{_list_items(details.get("missing_mandatory"))}</ul></div>
+          <div><h4>Souhaites trouves</h4><ul>{_list_items(details.get("matched_preferred"))}</ul></div>
+          <div><h4>Souhaites manquants</h4><ul>{_list_items(details.get("missing_preferred"))}</ul></div>
+        </div>
+        """
+    if category_name == "responsibilities":
+        responsibility_scores = details.get("responsibility_scores") or []
+        rows = []
+        for item in responsibility_scores:
+            status = str(item.get("status") or "none")
+            rows.append(
+                f"""
+                <tr>
+                  <td><span class="pill {escape(status)}">{escape(status)}</span></td>
+                  <td>{escape(str(item.get("responsibility") or ""))}</td>
+                  <td>{float(item.get("score") or 0):.2f}%</td>
+                  <td>{escape(str(item.get("evidence") or "")[:320])}</td>
+                </tr>
+                """
+            )
+        if not rows:
+            return ""
+        return f"""
+        <h4>Evaluation detaillee des responsabilites</h4>
+        <table class="mini-table">
+          <thead><tr><th>Etat</th><th>Responsabilite</th><th>Score</th><th>Preuve</th></tr></thead>
+          <tbody>{"".join(rows)}</tbody>
+        </table>
+        """
+    return ""
 
 
 def _extracted_text_section(documents: list[dict]) -> str:
