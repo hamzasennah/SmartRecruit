@@ -191,6 +191,34 @@ def test_cv_extractor_accepts_model_missions_returned_as_objects() -> None:
     assert cv.experiences[0].skills_used == ["azure", "sql"]
 
 
+def test_cv_extractor_accepts_education_years_returned_as_month_year_strings() -> None:
+    document = DocumentText(filename="zakariaa.txt", text="CV Zakariaa", char_count=11)
+    llm_payload = {
+        "candidate_name": "Zakariaa",
+        "education": [
+            {
+                "degree": "Master",
+                "institution": "Faculte des sciences et technologies",
+                "start_year": "September 2018",
+                "end_year": "October 2020",
+            },
+            {
+                "degree": "Licence",
+                "institution": "Faculte des sciences et technologies",
+                "start_year": "September 2017",
+                "end_year": "June 2018",
+            },
+        ],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert [(education.start_year, education.end_year) for education in cv.education] == [
+        (2018, 2020),
+        (2017, 2018),
+    ]
+
+
 def test_cv_extractor_normalizes_companies_and_abbreviated_french_dates() -> None:
     text = """
     Zakariaa

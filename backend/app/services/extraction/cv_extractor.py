@@ -72,6 +72,12 @@ def _coerce_cv_payload(raw_payload: str | dict) -> dict:
         project["description"] = _coerce_scalar(project.get("description"), preferred_keys=("description", "mission", "text"))
         project["skills_used"] = _coerce_string_list(project.get("skills_used"), preferred_keys=("skill", "name", "tool", "technology"))
 
+    for education in payload.get("education") or []:
+        if not isinstance(education, dict):
+            continue
+        education["start_year"] = _coerce_year(education.get("start_year"))
+        education["end_year"] = _coerce_year(education.get("end_year"))
+
     return payload
 
 
@@ -105,6 +111,17 @@ def _coerce_scalar(value, preferred_keys: tuple[str, ...] = ("value", "name", "t
                 return candidate
         return None
     return str(value)
+
+
+def _coerce_year(value) -> int | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    match = re.search(r"(19|20)\d{2}", str(value))
+    return int(match.group(0)) if match else None
 
 
 def _filter_professional_experiences(experiences: list[Experience]) -> list[Experience]:

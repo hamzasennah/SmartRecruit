@@ -26,14 +26,19 @@ def main() -> None:
         default=None,
         help="Chemin d'un CV PDF. Repete cette option pour analyser plusieurs CV.",
     )
+    parser.add_argument(
+        "--cv-dir",
+        action="append",
+        default=None,
+        help="Dossier contenant des CV PDF. Tous les PDF du dossier seront analyses.",
+    )
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--json-output", default="result.json")
     parser.add_argument("--html-output", default="result_report.html")
     args = parser.parse_args()
 
     job_path = _existing_path(args.job_file)
-    cv_files = args.cv_file or ["SAMPLES/cv1.pdf", "SAMPLES/cv2.pdf"]
-    cv_paths = [_existing_path(path) for path in cv_files]
+    cv_paths = _resolve_cv_paths(args.cv_file, args.cv_dir)
     result_path = BACKEND_ROOT / args.json_output
     report_path = BACKEND_ROOT / args.html_output
     extracted_texts = _extract_input_texts(job_path, cv_paths)
@@ -85,6 +90,27 @@ def _existing_path(value: str) -> Path:
     if not path.exists():
         raise FileNotFoundError(f"Fichier introuvable: {path}")
     return path
+
+
+def _resolve_cv_paths(cv_files: list[str] | None, cv_dirs: list[str] | None) -> list[Path]:
+    paths: list[Path] = []
+    for value in cv_files or []:
+        paths.append(_existing_path(value))
+    for value in cv_dirs or []:
+        directory = _existing_path(value)
+        if not directory.is_dir():
+            raise NotADirectoryError(f"Dossier CV invalide: {directory}")
+        paths.extend(sorted(directory.glob("*.pdf")))
+    if not paths:
+        paths = [_existing_path("SAMPLES/cv1.pdf"), _existing_path("SAMPLES/cv2.pdf")]
+    seen: set[Path] = set()
+    unique_paths: list[Path] = []
+    for path in paths:
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique_paths.append(resolved)
+    return unique_paths
 
 
 def _extract_input_texts(job_path: Path, cv_paths: list[Path]) -> list[dict]:
