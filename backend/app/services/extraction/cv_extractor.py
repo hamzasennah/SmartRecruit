@@ -5,7 +5,7 @@ import re
 from app.schemas.cv import Experience, StructuredCV
 from app.schemas.document import DocumentText
 from app.services.experience.duration_calculator import enrich_experience_durations
-from app.services.extraction.output_validator import validate_model
+from app.services.extraction.output_validator import parse_json_payload, validate_model
 from app.services.extraction.prompts import CV_EXTRACTION_PROMPT
 from app.services.normalization.education_normalizer import normalize_education_level
 from app.services.normalization.language_normalizer import normalize_language, normalize_language_level
@@ -21,10 +21,8 @@ class CVExtractor:
         self._llm = llm_client
 
     def extract(self, document: DocumentText) -> StructuredCV:
-        cv = validate_model(
-            self._llm.generate_json(CV_EXTRACTION_PROMPT.format(text=document.text[:12000])),
-            StructuredCV,
-        )
+        raw_payload = self._llm.generate_json(CV_EXTRACTION_PROMPT.format(text=document.text[:12000]))
+        cv = validate_model(_coerce_cv_payload(raw_payload), StructuredCV)
 
         cv.skills.technical = normalize_skill_list(cv.skills.technical)
         cv.skills.tools = normalize_skill_list(cv.skills.tools)
@@ -49,6 +47,64 @@ class CVExtractor:
             )
         cv.raw_text_preview = document.text[:600]
         return cv
+
+
+def _coerce_cv_payload(raw_payload: str | dict) -> dict:
+    payload = parse_json_payload(raw_payload) if isinstance(raw_payload, str) else dict(raw_payload)
+    payload["job_titles"] = _coerce_string_list(payload.get("job_titles"))
+    payload["certifications"] = _coerce_string_list(payload.get("certifications"))
+
+    skills = payload.get("skills")
+    if isinstance(skills, dict):
+        skills["technical"] = _coerce_string_list(skills.get("technical"))
+        skills["soft"] = _coerce_string_list(skills.get("soft"))
+        skills["tools"] = _coerce_string_list(skills.get("tools"))
+
+    for experience in payload.get("experiences") or []:
+        if not isinstance(experience, dict):
+            continue
+        experience["missions"] = _coerce_string_list(experience.get("missions"), preferred_keys=("mission", "description", "text"))
+        experience["skills_used"] = _coerce_string_list(experience.get("skills_used"), preferred_keys=("skill", "name", "tool", "technology"))
+
+    for project in payload.get("projects") or []:
+        if not isinstance(project, dict):
+            continue
+        project["description"] = _coerce_scalar(project.get("description"), preferred_keys=("description", "mission", "text"))
+        project["skills_used"] = _coerce_string_list(project.get("skills_used"), preferred_keys=("skill", "name", "tool", "technology"))
+
+    return payload
+
+
+def _coerce_string_list(value, preferred_keys: tuple[str, ...] = ("value", "name", "text")) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if not isinstance(value, list):
+        return [str(value)]
+    result: list[str] = []
+    for item in value:
+        scalar = _coerce_scalar(item, preferred_keys)
+        if scalar:
+            result.append(scalar)
+    return result
+
+
+def _coerce_scalar(value, preferred_keys: tuple[str, ...] = ("value", "name", "text")) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in preferred_keys:
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate
+        for candidate in value.values():
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate
+        return None
+    return str(value)
 
 
 def _filter_professional_experiences(experiences: list[Experience]) -> list[Experience]:

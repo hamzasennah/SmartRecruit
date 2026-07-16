@@ -136,6 +136,34 @@ def test_cv_extractor_filters_noisy_llm_experience_titles() -> None:
     assert [experience.job_title for experience in cv.experiences] == ["Developpeur Full Stack"]
 
 
+def test_cv_extractor_accepts_model_missions_returned_as_objects() -> None:
+    document = DocumentText(filename="soufyane.txt", text="CV Soufyane", char_count=11)
+    llm_payload = {
+        "candidate_name": "Soufyane",
+        "skills": {"technical": [{"skill": "Azure"}]},
+        "experiences": [
+            {
+                "job_title": "Developpeur Full Stack",
+                "company": "Experteye",
+                "missions": [
+                    {"mission": "Pilotage du developpement de la plateforme SaaS RentalEye"},
+                    {"description": "Visualisation de donnees et reporting interne"},
+                ],
+                "skills_used": [{"skill": "Azure"}, {"technology": "SQL"}],
+            }
+        ],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.skills.technical == ["azure"]
+    assert cv.experiences[0].missions == [
+        "Pilotage du developpement de la plateforme SaaS RentalEye",
+        "Visualisation de donnees et reporting interne",
+    ]
+    assert cv.experiences[0].skills_used == ["azure", "sql"]
+
+
 def test_cv_extractor_normalizes_companies_and_abbreviated_french_dates() -> None:
     text = """
     Zakariaa

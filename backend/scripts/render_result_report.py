@@ -25,6 +25,7 @@ def _build_html(data: dict, extracted_texts: list[dict]) -> str:
     else:
         job = data.get("job", {})
         ranking = data.get("ranking", [])
+        errors_section = _errors_section(data.get("errors") or [])
         rows, details = [], []
         for item in ranking:
             candidate = item.get("candidate", {})
@@ -46,6 +47,7 @@ def _build_html(data: dict, extracted_texts: list[dict]) -> str:
         required_skills = job.get("required_skills") or {}
         body = f"""
         {extraction_section}
+        {errors_section}
         <section class="card">
           <h2>Fiche de poste</h2>
           <p><strong>Poste :</strong> {escape(str(job.get("job_title") or "Non precise"))}</p>
@@ -247,6 +249,18 @@ def _extracted_text_section(documents: list[dict]) -> str:
       <h2>Texte extrait des documents</h2>
       <p class="muted">Cette section montre le texte obtenu avant l'appel au modele et avant le scoring.</p>
       {"".join(panels)}
+    </section>
+    """
+
+
+def _errors_section(errors: list[str]) -> str:
+    if not errors:
+        return ""
+    return f"""
+    <section class="error">
+      <h2>Erreurs de traitement</h2>
+      <p>Certains documents ont ete lus, mais leur analyse structuree n'a pas pu etre terminee.</p>
+      <ul>{_list_items(errors)}</ul>
     </section>
     """
 
