@@ -59,6 +59,7 @@ def main() -> None:
         json={
             "model": settings.embedding_model,
             "input": ["Data analyst avec Power BI, SQL et tableaux de bord."],
+            "input_type": "query",
         },
         timeout=timeout,
     )
