@@ -37,6 +37,7 @@ backend/
       orchestration/         Pipeline complet fiche + CV + ranking
   scripts/
     check_nvidia_api.py      Test reel NVIDIA API
+    analyze_samples.py       Analyse les PDF de SAMPLES et ouvre le rapport HTML
     free_port.py             Liberation d'un port local
     initialize_databases.py  Creation des tables PostgreSQL
     run_backend.sh           Lancement FastAPI
@@ -65,7 +66,7 @@ NVIDIA_EMBEDDING_MODEL=nvidia/llama-nemotron-embed-1b-v2
 NVIDIA_TIMEOUT=120
 NVIDIA_MAX_RETRIES=2
 NVIDIA_RETRY_DELAY=2
-NVIDIA_MAX_TOKENS=1400
+NVIDIA_MAX_TOKENS=8192
 NVIDIA_TEMPERATURE=0.0
 NVIDIA_EMBEDDING_DIMENSIONS=
 DATABASE_URL=postgresql+psycopg2://smartrecruit:smartrecruit@localhost:5432/smartrecruit
@@ -116,6 +117,22 @@ Form-data :
 - `job_file` : fiche de poste ;
 - `cv_files` : un ou plusieurs CV ;
 - `top_k` : nombre de preuves semantiques recuperees par candidat.
+
+## Test avec affichage automatique
+
+Quand PostgreSQL et FastAPI sont lances, cette commande analyse les fichiers dans `SAMPLES/`, genere `result.json`, cree `result_report.html`, puis ouvre automatiquement la page de resultats :
+
+```bash
+cd ~/SmartRecruit/backend
+python scripts/analyze_samples.py
+```
+
+Sous Windows PowerShell :
+
+```powershell
+cd C:\Users\pc\SmartRecruit\backend
+python scripts\analyze_samples.py
+```
 
 ## Tests
 
