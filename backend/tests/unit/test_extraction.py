@@ -81,6 +81,33 @@ def test_job_extractor_moves_languages_out_of_technical_skills_and_infers_title(
     assert [language.language for language in job.language_requirements] == ["francais", "anglais"]
 
 
+def test_job_extractor_removes_model_skills_not_proven_in_job_text() -> None:
+    text = """
+    Data analyst packaging tool (SPM)
+    Tools : Power BI, Excel et eventually Foundry
+    Data available in datalake Snowflake + Azure
+    Creation of KPI / dashbord in Power BI or Foundry
+    fluent French & English
+    """
+    document = DocumentText(filename="fiche_de_poste.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "job_title": "Data analyst",
+        "required_skills": {
+            "mandatory": ["Python", "Power BI", "PostgreSQL", "Excel", "Snowflake"],
+            "preferred": ["Django", "Foundry"],
+            "soft": [],
+        },
+    }
+
+    job = JobExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert "python" not in job.required_skills.mandatory
+    assert "postgresql" not in job.required_skills.mandatory
+    assert "django" not in job.required_skills.preferred
+    assert job.required_skills.mandatory == ["power bi", "excel", "snowflake", "dashboard", "kpi", "azure"]
+    assert job.required_skills.preferred == ["foundry", "spm"]
+
+
 def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experiences() -> None:
     text = """
     Soufyane Candidat

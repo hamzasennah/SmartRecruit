@@ -6,6 +6,8 @@ REGLES D'EXTRACTION:
 - N'invente pas, ne complete pas, ne traduis pas et n'enrichis pas les faits absents du texte.
 - Chaque competence, outil, entreprise, poste, date, certification, langue, diplome, ecole et projet doit avoir une preuve directe dans le texte.
 - N'extrais une competence que si le terme exact ou un synonyme explicitement ecrit apparait.
+- N'infere jamais Python depuis "backend", SQL depuis "base de donnees", AWS/Azure depuis "cloud", Power BI depuis "dashboard", ni une competence depuis une responsabilite.
+- Chaque mission doit etre une chaine de caracteres courte, jamais un objet JSON imbrique.
 - Garde les competences atomiques: "Python", "Power BI", "PostgreSQL" plutot que longues phrases.
 - Ne mets jamais les langues humaines dans les competences.
 - Ne cree pas d'experience depuis la formation, les certifications, les projets personnels ou le resume general.

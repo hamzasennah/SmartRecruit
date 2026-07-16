@@ -61,10 +61,12 @@ def _apply_job_text_rules(job: StructuredJobDescription, text: str) -> None:
     mandatory, languages_from_skills, soft_from_mandatory, demoted_to_preferred = _clean_skill_bucket(
         job.required_skills.mandatory,
         demote_preferred_only=True,
+        normalized_text=normalized,
     )
     preferred, more_languages, soft_from_preferred, _ = _clean_skill_bucket(
         job.required_skills.preferred,
         demote_preferred_only=False,
+        normalized_text=normalized,
     )
     preferred.extend(demoted_to_preferred)
     soft = [skill for skill in job.required_skills.soft if normalize_text(skill) not in {"project management"}]
@@ -88,7 +90,11 @@ def _apply_job_text_rules(job: StructuredJobDescription, text: str) -> None:
     _add_language_requirements(job, languages_from_skills, normalized)
 
 
-def _clean_skill_bucket(skills: list[str], demote_preferred_only: bool) -> tuple[list[str], list[str], list[str], list[str]]:
+def _clean_skill_bucket(
+    skills: list[str],
+    demote_preferred_only: bool,
+    normalized_text: str,
+) -> tuple[list[str], list[str], list[str], list[str]]:
     kept: list[str] = []
     languages: list[str] = []
     soft: list[str] = []
@@ -99,11 +105,26 @@ def _clean_skill_bucket(skills: list[str], demote_preferred_only: bool) -> tuple
             languages.append(normalized)
         elif normalized in {"autonomy", "leadership", "self driven", "self-driven"}:
             soft.append(normalized)
-        elif demote_preferred_only and normalized in {"foundry", "project management"}:
+        elif (
+            demote_preferred_only
+            and normalized in {"foundry", "project management"}
+            and _skill_has_text_evidence(normalized, normalized_text)
+        ):
             demoted_preferred.append(normalized)
-        else:
+        elif _skill_has_text_evidence(normalized, normalized_text):
             kept.append(skill)
     return kept, languages, soft, demoted_preferred
+
+
+def _skill_has_text_evidence(skill: str, normalized_text: str) -> bool:
+    if not skill:
+        return False
+    if skill in normalized_text:
+        return True
+    for canonical, (_, signals) in TECHNICAL_TEXT_RULES.items():
+        if skill == canonical:
+            return any(signal in normalized_text for signal in signals)
+    return False
 
 
 def _add_language_requirements(job: StructuredJobDescription, languages: list[str], normalized_text: str) -> None:

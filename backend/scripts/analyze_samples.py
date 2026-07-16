@@ -20,14 +20,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Analyse les PDF de SAMPLES et ouvre une page HTML de resultats.")
     parser.add_argument("--api-url", default="http://127.0.0.1:8002/api/ranking/analyze")
     parser.add_argument("--job-file", default="SAMPLES/fiche_poste.pdf")
-    parser.add_argument("--cv-file", action="append", default=["SAMPLES/cv1.pdf", "SAMPLES/cv2.pdf"])
+    parser.add_argument(
+        "--cv-file",
+        action="append",
+        default=None,
+        help="Chemin d'un CV PDF. Repete cette option pour analyser plusieurs CV.",
+    )
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--json-output", default="result.json")
     parser.add_argument("--html-output", default="result_report.html")
     args = parser.parse_args()
 
     job_path = _existing_path(args.job_file)
-    cv_paths = [_existing_path(path) for path in args.cv_file]
+    cv_files = args.cv_file or ["SAMPLES/cv1.pdf", "SAMPLES/cv2.pdf"]
+    cv_paths = [_existing_path(path) for path in cv_files]
     result_path = BACKEND_ROOT / args.json_output
     report_path = BACKEND_ROOT / args.html_output
     extracted_texts = _extract_input_texts(job_path, cv_paths)
