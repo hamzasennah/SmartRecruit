@@ -17,9 +17,9 @@ from app.services.documents.docling_parser import DoclingParser
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Analyse les PDF de SAMPLES et ouvre une page HTML de resultats.")
+    parser = argparse.ArgumentParser(description="Analyse une fiche de poste et un nombre libre de CV PDF.")
     parser.add_argument("--api-url", default="http://127.0.0.1:8002/api/ranking/analyze")
-    parser.add_argument("--job-file", default="SAMPLES/fiche_poste.pdf")
+    parser.add_argument("--job-file", default="samples/fiche_poste.pdf")
     parser.add_argument(
         "--cv-file",
         action="append",
@@ -102,7 +102,7 @@ def _resolve_cv_paths(cv_files: list[str] | None, cv_dirs: list[str] | None) -> 
             raise NotADirectoryError(f"Dossier CV invalide: {directory}")
         paths.extend(sorted(directory.glob("*.pdf")))
     if not paths:
-        paths = [_existing_path("SAMPLES/cv1.pdf"), _existing_path("SAMPLES/cv2.pdf")]
+        paths = [_existing_path("samples/cv1.pdf"), _existing_path("samples/cv2.pdf")]
     seen: set[Path] = set()
     unique_paths: list[Path] = []
     for path in paths:

@@ -11,3 +11,6 @@ storage/documents/*
 storage/results/*
 !storage/results/.gitkeep
 logs/
+!samples/
+samples/*
+!samples/.gitkeep
