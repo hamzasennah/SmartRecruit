@@ -10,6 +10,8 @@ storage/documents/*
 !storage/documents/.gitkeep
 storage/results/*
 !storage/results/.gitkeep
+result.json
+result_report.html
 logs/
 !samples/
 samples/*

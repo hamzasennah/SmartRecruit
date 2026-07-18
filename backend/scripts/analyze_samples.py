@@ -38,7 +38,7 @@ def main() -> None:
     args = parser.parse_args()
 
     job_path = _existing_path(args.job_file)
-    cv_paths = _resolve_cv_paths(args.cv_file, args.cv_dir)
+    cv_paths = _resolve_cv_paths(args.cv_file, args.cv_dir, job_path)
     result_path = BACKEND_ROOT / args.json_output
     report_path = BACKEND_ROOT / args.html_output
     extracted_texts = _extract_input_texts(job_path, cv_paths)
@@ -92,7 +92,7 @@ def _existing_path(value: str) -> Path:
     return path
 
 
-def _resolve_cv_paths(cv_files: list[str] | None, cv_dirs: list[str] | None) -> list[Path]:
+def _resolve_cv_paths(cv_files: list[str] | None, cv_dirs: list[str] | None, job_path: Path) -> list[Path]:
     paths: list[Path] = []
     for value in cv_files or []:
         paths.append(_existing_path(value))
@@ -103,13 +103,18 @@ def _resolve_cv_paths(cv_files: list[str] | None, cv_dirs: list[str] | None) -> 
         paths.extend(sorted(directory.glob("*.pdf")))
     if not paths:
         paths = [_existing_path("samples/cv1.pdf"), _existing_path("samples/cv2.pdf")]
+    job_resolved = job_path.resolve()
     seen: set[Path] = set()
     unique_paths: list[Path] = []
     for path in paths:
         resolved = path.resolve()
+        if resolved == job_resolved:
+            continue
         if resolved not in seen:
             seen.add(resolved)
             unique_paths.append(resolved)
+    if not unique_paths:
+        raise FileNotFoundError("Aucun CV PDF trouve. Ajoute au moins un CV different de la fiche de poste.")
     return unique_paths
 
 
