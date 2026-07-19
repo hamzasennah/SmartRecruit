@@ -4,6 +4,12 @@ Backend FastAPI pour analyser une fiche de poste et classer des CV avec une appr
 
 Le projet contient uniquement le backend pour le moment.
 
+## Idee du projet
+
+SmartRecruit recoit une fiche de poste et un nombre libre de CV. La fiche de poste sert de reference d'evaluation, tandis que les CV sont les documents a analyser et a classer.
+
+Le backend ne donne pas un score directement a partir du nom du fichier ou d'une base de resultats deja calculee. A chaque analyse, il relit les documents, extrait leur texte, structure les informations avec le LLM NVIDIA, vectorise les passages des CV avec le modele d'embedding NVIDIA, recherche les preuves pertinentes dans PostgreSQL, puis calcule un score explicable.
+
 ## Fonctionnement
 
 - extraction de texte depuis PDF, DOCX, TXT et MD ;
@@ -15,6 +21,45 @@ Le projet contient uniquement le backend pour le moment.
 - recherche semantique des preuves les plus proches de la fiche de poste ;
 - scoring explicable par categories avec redistribution des poids sur les criteres presents ;
 - classement final avec rang, score, forces, faiblesses et preuves.
+
+## Architecture logique
+
+```mermaid
+flowchart TD
+    A["PDF fiche de poste"] --> B["Extraction du texte brut"]
+    C["PDF CV candidats"] --> D["Extraction du texte brut"]
+
+    B --> E["LLM NVIDIA"]
+    D --> F["LLM NVIDIA"]
+
+    E --> G["JSON fiche de poste structuree<br/>competences, responsabilites, langues..."]
+    F --> H["JSON CV structure<br/>nom, experiences, formation, skills..."]
+
+    D --> I["Segmentation du texte CV<br/>sections: experience, skills, projets..."]
+    I --> J["Decoupage en chunks"]
+    J --> K["Modele embedding NVIDIA"]
+    K --> L["Vecteurs des chunks CV"]
+    L --> M["PostgreSQL<br/>table vector_chunks"]
+
+    G --> N["Construction de la requete semantique<br/>criteres du poste"]
+    N --> O["Modele embedding NVIDIA"]
+    O --> P["Vecteur de requete"]
+
+    P --> Q["Recherche semantique<br/>similarite cosinus"]
+    M --> Q
+
+    Q --> R["Passages pertinents / preuves RAG"]
+
+    G --> S["Matching et scoring"]
+    H --> S
+    R --> S
+
+    S --> T["Classement final<br/>scores, forces, faiblesses, preuves"]
+```
+
+Le schema montre que le backend suit deux chemins complementaires apres l'extraction du texte. D'un cote, le texte brut de la fiche de poste et des CV est envoye au LLM NVIDIA pour etre transforme en JSON structure. De l'autre cote, le texte brut des CV est segmente puis decoupe en chunks, qui sont envoyes au modele d'embedding NVIDIA pour etre transformes en vecteurs et stockes temporairement dans PostgreSQL. Ensuite, les criteres extraits de la fiche de poste sont aussi vectorises afin de rechercher les passages de CV les plus proches semantiquement. Le scoring utilise enfin le JSON structure et les preuves RAG pour produire le classement final.
+
+Important : les vecteurs sont isoles par un `namespace` propre a chaque analyse, puis supprimes a la fin du traitement. Cela evite de melanger les tests et garantit qu'un nouveau lancement relit les documents fournis.
 
 ## Arborescence utile
 
@@ -46,7 +91,7 @@ backend/
 ## Prerequis
 
 - Python 3.11 ou plus ;
-- Docker Compose pour PostgreSQL ;
+- PostgreSQL accessible localement ou via Docker Compose ;
 - cle API NVIDIA ;
 - modele LLM : `meta/llama-3.1-8b-instruct` ;
 - modele embeddings : `nvidia/llama-nemotron-embed-1b-v2`.
@@ -67,9 +112,9 @@ NVIDIA_TIMEOUT=120
 NVIDIA_MAX_RETRIES=2
 NVIDIA_RETRY_DELAY=2
 NVIDIA_MAX_TOKENS=8192
-NVIDIA_TEMPERATURE=0.0
+NVIDIA_TEMPERATURE=0.1
 NVIDIA_EMBEDDING_DIMENSIONS=
-DATABASE_URL=postgresql+psycopg2://smartrecruit:smartrecruit@localhost:5432/smartrecruit
+DATABASE_URL=postgresql+psycopg://smartrecruit:smartrecruit@localhost:5432/smartrecruit
 MAX_UPLOAD_MB=20
 ```
 
@@ -77,13 +122,15 @@ Le backend utilise les services configures. Si NVIDIA API ou PostgreSQL ne repon
 
 ## Lancement
 
-Terminal 1 - PostgreSQL :
+Terminal 1 - PostgreSQL avec Docker Compose, si vous utilisez Docker :
 
 ```bash
 cd ~/SmartRecruit/backend
 docker compose down
 docker compose up -d
 ```
+
+Si PostgreSQL est installe directement sur la machine, il suffit que la base indiquee dans `DATABASE_URL` existe et que le service PostgreSQL soit demarre.
 
 Terminal 2 - Backend FastAPI :
 
@@ -120,7 +167,7 @@ Form-data :
 
 ## Test avec affichage automatique
 
-Quand PostgreSQL et FastAPI sont lances, cette commande analyse les fichiers dans `SAMPLES/`, genere `result.json`, cree `result_report.html`, puis ouvre automatiquement la page de resultats :
+Quand PostgreSQL et FastAPI sont lances, cette commande analyse les fichiers dans `samples/`, genere `result.json`, cree `result_report.html`, puis ouvre automatiquement la page de resultats :
 
 ```bash
 cd ~/SmartRecruit/backend
@@ -132,6 +179,12 @@ Sous Windows PowerShell :
 ```powershell
 cd C:\Users\pc\SmartRecruit\backend
 python scripts\analyze_samples.py
+```
+
+Par defaut, le script prend `samples/fiche_poste.pdf` comme fiche de poste et analyse tous les autres PDF du dossier comme CV. Pour utiliser un autre dossier de CV :
+
+```powershell
+python scripts\analyze_samples.py --job-file samples\fiche_poste.pdf --cv-dir "C:\chemin\vers\mes_cv"
 ```
 
 ## Tests
