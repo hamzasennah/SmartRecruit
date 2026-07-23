@@ -7,6 +7,16 @@ from app.config import settings
 from app.services.normalization.text_normalizer import normalize_text
 
 LANGUAGE_ALIASES = {"french": "francais", "francais": "francais", "english": "anglais", "anglais": "anglais", "arabic": "arabe", "arabe": "arabe"}
+LEVEL_ALIASES = {
+    "anglais professionnel": "professional",
+    "capacite professionnelle complete": "professional",
+    "courante": "courant",
+    "maternelle": "native",
+    "maternel": "native",
+    "niveau professionnel": "professional",
+    "professionnelle": "professional",
+    "professionnel": "professional",
+}
 
 
 @lru_cache(maxsize=1)
@@ -23,7 +33,7 @@ def normalize_language(value: str | None) -> str:
 
 def normalize_language_level(value: str | None) -> str | None:
     normalized = normalize_text(value)
-    return normalized or None
+    return LEVEL_ALIASES.get(normalized, normalized) or None
 
 
 def language_rank(value: str | None) -> int:

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 from typing import Any
 
 import httpx
 
 from app.config import Settings
-from app.core.exceptions import ExternalServiceError
+from app.core.exceptions import ExternalServiceError, OutputValidationError
+from app.services.extraction.output_validator import parse_json_payload
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ class NvidiaLLMClient:
             return _loads_json(content)
         except (KeyError, IndexError, TypeError) as exc:
             raise ExternalServiceError("La reponse NVIDIA LLM n'a pas le format attendu.") from exc
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, OutputValidationError) as exc:
             finish_reason = _finish_reason(response)
             preview = str(content)[-600:]
             logger.error(
@@ -126,17 +126,7 @@ def get_llm_client(settings: Settings) -> NvidiaLLMClient:
 
 
 def _loads_json(text: str) -> dict[str, Any]:
-    candidate = text.strip()
-    if candidate.startswith("```"):
-        candidate = re.sub(r"^```(?:json)?", "", candidate).strip()
-        candidate = re.sub(r"```$", "", candidate).strip()
-    try:
-        return json.loads(candidate)
-    except json.JSONDecodeError:
-        start, end = candidate.find("{"), candidate.rfind("}")
-        if start == -1 or end <= start:
-            raise
-        return json.loads(candidate[start:end + 1])
+    return parse_json_payload(text)
 
 
 def _finish_reason(response: dict[str, Any]) -> str | None:

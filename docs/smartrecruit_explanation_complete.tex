@@ -1,0 +1,562 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=2.2cm}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue
+}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\folder}[1]{\textbf{\code{#1}}}
+\newcommand{\important}[1]{\textbf{#1}}
+
+\title{\textbf{SmartRecruit}\\Explication complète du backend et du frontend}
+\author{Projet de classement intelligent des CV}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Objectif général du projet}
+
+SmartRecruit est une application de classement de CV par rapport à une fiche de poste. L'utilisateur fournit une fiche de poste et un ensemble de CV. Le système extrait le texte des documents, transforme les informations utiles en structures JSON contrôlées, indexe les passages des CV sous forme de vecteurs, recherche les preuves pertinentes par RAG, calcule un score explicable pour chaque candidat, puis retourne un classement final.
+
+L'idée centrale n'est pas de donner une note artificielle sans preuve. Le système doit associer chaque score à des éléments vérifiables: compétences trouvées, compétences manquantes, responsabilités partiellement ou directement prouvées, langues, expérience, formation et preuves textuelles récupérées.
+
+\section{Architecture ou logique globale}
+
+\subsection{Chaîne de traitement}
+
+\begin{verbatim}
+Utilisateur
+   |
+   |-- Fiche de poste PDF/DOCX/TXT/MD
+   |-- Plusieurs CV PDF/DOCX/TXT/MD
+   v
+Frontend React
+   |
+   |-- Envoie les fichiers vers /api/ranking/analyze
+   v
+Backend FastAPI
+   |
+   |-- Parsing des documents
+   |-- Extraction structurée avec le LLM NVIDIA
+   |-- Normalisation des textes, compétences, langues, dates
+   |-- Découpage des CV en chunks
+   |-- Embeddings NVIDIA des chunks
+   |-- Stockage vectoriel dans PostgreSQL
+   |-- Requête sémantique depuis la fiche de poste
+   |-- Retrieval RAG des passages pertinents
+   |-- Matching et scoring explicable
+   |-- Classement final
+   v
+Frontend React
+   |
+   |-- Affiche les étapes du pipeline
+   |-- Affiche le classement et les détails par candidat
+\end{verbatim}
+
+\subsection{Rôle du LLM et du modèle d'embedding}
+
+Le LLM NVIDIA sert à transformer le texte brut en JSON structuré. Il lit le contenu textuel d'une fiche de poste ou d'un CV et retourne des champs organisés: compétences, langues, expériences, formations, responsabilités, etc. Son rôle est donc sémantique et structurant.
+
+Le modèle d'embedding NVIDIA sert à transformer des morceaux de texte en vecteurs numériques. Ces vecteurs sont stockés dans PostgreSQL et utilisés pour retrouver les passages les plus proches des critères de la fiche de poste. Son rôle est donc vectoriel et orienté recherche sémantique.
+
+Les deux modèles ne font pas la même chose. Le LLM structure et comprend le document; le modèle d'embedding transforme les textes en vecteurs pour la recherche RAG.
+
+\subsection{Pourquoi structurer aussi les CV en JSON}
+
+Les passages RAG donnent des preuves locales, mais ils ne remplacent pas la structure complète du CV. Le JSON du CV permet de savoir qui est le candidat, quelles langues il déclare, quelles compétences sont explicitement présentes, quelles expériences sont professionnelles, quelles formations existent et quels projets sont mentionnés.
+
+Le RAG sert surtout à retrouver des preuves textuelles pertinentes. Le JSON structuré sert à faire un matching organisé par critères. Les deux sont complémentaires: sans RAG, le scoring manquerait de preuves; sans JSON structuré, le scoring serait difficile à expliquer proprement.
+
+\section{Vue générale de l'arbre}
+
+\begin{verbatim}
+SmartRecruit/
+  backend/
+    app/
+      api/routes/
+      core/
+      data/
+      database/
+      infrastructure/
+      schemas/
+      services/
+      config.py
+      dependencies.py
+      main.py
+    samples/
+    scripts/
+    storage/
+    tests/
+    uploads/
+    requirements.txt
+    docker-compose.yml
+  frontend/
+    src/
+      App.tsx
+      main.tsx
+      styles.css
+    package.json
+    vite.config.ts
+\end{verbatim}
+
+Les dossiers comme \code{.venv}, \code{node_modules}, \code{dist}, \code{__pycache__}, \code{.pytest_cache}, \code{result.json} et \code{result_report.html} ne sont pas des parties métier du code. Ce sont des environnements, caches, dépendances installées ou fichiers générés.
+
+\newpage
+\section{Backend}
+
+\subsection{Rôle général du backend}
+
+Le backend est le coeur métier du projet. Il reçoit les documents, extrait leur contenu, appelle les modèles NVIDIA, stocke les vecteurs et les résultats dans PostgreSQL, applique les règles de matching, calcule les scores et retourne une réponse structurée au frontend.
+
+Techniquement, il est construit avec FastAPI. FastAPI expose des routes HTTP comme \code{/api/health}, \code{/api/documents/parse} et \code{/api/ranking/analyze}. Le backend utilise aussi Pydantic pour valider les données, SQLAlchemy pour communiquer avec PostgreSQL, PyMuPDF pour lire les PDF, python-docx pour lire les DOCX, et httpx pour appeler les API NVIDIA.
+
+\subsection{\code{backend/app/main.py}}
+
+Ce fichier est le point d'entrée de l'application FastAPI. Il crée l'objet \code{app}, configure le CORS pour permettre au frontend d'appeler le backend, active les logs et branche les routers: santé, documents et ranking.
+
+La route racine \code{/} sert seulement à confirmer que le backend tourne. La vraie API métier est sous le préfixe \code{/api}.
+
+\subsection{\code{backend/app/config.py}}
+
+Ce fichier centralise la configuration du projet. Il lit les variables du fichier \code{backend/.env}: clé NVIDIA, URL NVIDIA, modèle LLM, modèle embedding, timeout, nombre de tentatives, température, base PostgreSQL, dossiers d'upload et origines frontend autorisées.
+
+Le rôle de \code{Settings} est d'éviter de disperser les chemins, les clés API et les paramètres dans plusieurs fichiers. Si on change un modèle ou une URL, on le fait via \code{.env} et non directement dans la logique métier.
+
+\subsection{\code{backend/app/dependencies.py}}
+
+Ce fichier construit les dépendances principales utilisées par les routes. Il fournit le parseur de documents et le pipeline complet de ranking.
+
+Concrètement, \code{get_batch_ranking_pipeline()} assemble quatre briques: le parseur de documents, le client LLM NVIDIA, le client embeddings NVIDIA et le vector store PostgreSQL. C'est une forme simple d'injection de dépendances.
+
+\subsection{\code{backend/app/api/routes}}
+
+\subsubsection{\code{health.py}}
+
+Cette route expose \code{GET /api/health}. Elle sert à vérifier que le backend est vivant et que les informations principales sont configurées: nom de l'application, modèle LLM, modèle d'embedding, présence de la clé NVIDIA et présence de \code{DATABASE_URL}.
+
+Elle est utile pour diagnostiquer rapidement si le problème vient du backend, de la configuration ou du frontend.
+
+\subsubsection{\code{documents.py}}
+
+Cette route expose \code{POST /api/documents/parse}. Elle reçoit un fichier, vérifie son extension, le sauvegarde dans le dossier \code{uploads}, puis appelle le parseur pour extraire le texte.
+
+Elle sert surtout à tester séparément l'extraction de texte sans lancer tout le classement. C'est important pour vérifier qu'un PDF ou un DOCX est lisible avant d'analyser les candidats.
+
+\subsubsection{\code{ranking.py}}
+
+Cette route expose \code{POST /api/ranking/analyze}. Elle reçoit une fiche de poste et une liste de CV. Elle sauvegarde les fichiers uploadés, lance le pipeline de classement et retourne un \code{RankingResponse}.
+
+Le paramètre \code{top_k} ne limite pas le nombre de CV. Il limite seulement le nombre de passages RAG récupérés par CV. Le nombre de CV est déterminé par les fichiers envoyés par l'utilisateur.
+
+\subsection{\code{backend/app/core}}
+
+\subsubsection{\code{constants.py}}
+
+Ce fichier contient les constantes globales simples du projet. La constante principale est \code{SUPPORTED_EXTENSIONS}, qui définit les formats acceptés: PDF, DOCX, TXT et MD.
+
+\subsubsection{\code{exceptions.py}}
+
+Ce fichier définit les erreurs métier du projet. \code{SmartRecruitError} est l'erreur de base, puis des erreurs spécialisées indiquent le type du problème: parsing de document, appel externe NVIDIA/PostgreSQL ou validation de sortie JSON.
+
+L'intérêt est de distinguer une erreur utilisateur, une erreur de document et une erreur de service externe.
+
+\subsubsection{\code{logging_config.py}}
+
+Ce fichier configure les logs Python. Les logs affichent la date, le niveau, le nom du logger et le message. Ils servent à suivre les étapes du backend et à diagnostiquer les erreurs.
+
+\subsection{\code{backend/app/data}}
+
+Ce dossier contient les dictionnaires utilisés par la normalisation et le scoring.
+
+\begin{longtable}{p{5cm}p{10cm}}
+\textbf{Fichier} & \textbf{Rôle} \\
+\hline
+\code{education_levels.json} & Associe les niveaux de formation à un rang numérique, par exemple bac, licence, master, ingénieur. Cela permet de comparer le niveau demandé et le niveau du candidat. \\
+\code{job_title_aliases.json} & Regroupe les variantes de titres de postes. Par exemple, certains intitulés proches peuvent être ramenés vers une forme commune. \\
+\code{language_levels.json} & Classe les niveaux de langue: débutant, intermédiaire, professionnel, courant, natif, etc. \\
+\code{scoring_weights.json} & Contient les poids des catégories du scoring: compétences techniques, expérience, responsabilités, formation, langues et soft skills. \\
+\code{skill_aliases.json} & Normalise les compétences et leurs synonymes, par exemple \code{Microsoft Excel} vers \code{excel} ou \code{PowerBI} vers \code{power bi}. \\
+\end{longtable}
+
+\subsection{\code{backend/app/database}}
+
+\subsubsection{\code{models.py}}
+
+Ce fichier décrit les tables PostgreSQL avec SQLAlchemy.
+
+\begin{longtable}{p{4cm}p{11cm}}
+\textbf{Table} & \textbf{Rôle} \\
+\hline
+\code{resumes} & Stocke les métadonnées des CV analysés: identifiant, nom de fichier, nom du candidat, hash du contenu, aperçu du texte et date de création. \\
+\code{jobs} & Stocke les métadonnées des fiches de poste: identifiant, nom de fichier, titre du poste, hash du contenu, aperçu du texte et date de création. \\
+\code{analyses} & Stocke le résultat global d'une analyse: namespace de l'analyse, fiche associée, nombre de candidats, résumé et JSON complet du résultat. \\
+\code{vector_chunks} & Stocke les chunks textuels des CV avec leurs vecteurs d'embedding sous forme JSON. Cette table est utilisée par la recherche RAG. \\
+\end{longtable}
+
+\subsubsection{\code{session.py}}
+
+Ce fichier crée le moteur SQLAlchemy à partir de \code{DATABASE_URL}. Le moteur est l'objet qui ouvre les connexions vers PostgreSQL. L'option \code{pool_pre_ping=True} vérifie les connexions avant usage, ce qui évite certaines erreurs de connexion inactive.
+
+\subsection{\code{backend/app/infrastructure}}
+
+Ce dossier contient les connecteurs techniques vers les services externes ou persistants.
+
+\subsubsection{\code{nvidia_llm.py}}
+
+Ce fichier contient le client responsable des appels au LLM NVIDIA. Il envoie les prompts vers l'endpoint de chat/completions, avec la clé API, le modèle, la température, le timeout et le nombre de tentatives.
+
+Le LLM est utilisé pour produire du JSON structuré à partir du texte brut. Si la réponse n'est pas exploitable ou si NVIDIA échoue, le backend retourne une erreur. Il n'y a pas de faux modèle de remplacement.
+
+\subsubsection{\code{nvidia_embeddings.py}}
+
+Ce fichier contient le client responsable des embeddings NVIDIA. Il envoie des textes au modèle d'embedding et récupère des vecteurs numériques.
+
+La méthode \code{embed_passages()} vectorise les chunks de CV. La méthode \code{embed_query()} vectorise la requête construite depuis la fiche de poste. Ces vecteurs sont ensuite comparés par similarité cosinus.
+
+\subsubsection{\code{postgres_vector_store.py}}
+
+Ce fichier joue le rôle de base vectorielle dans PostgreSQL. Il crée les tables si nécessaire, insère les chunks et vecteurs, enregistre les métadonnées des CV/fiches/analyses, et recherche les passages les plus proches d'une requête vectorielle.
+
+Le \code{namespace} identifie une analyse précise. À chaque analyse, un namespace unique est créé; les vecteurs temporaires liés à ce namespace sont supprimés à la fin. Cela évite de mélanger les CV d'un test avec ceux d'un autre test.
+
+\subsection{\code{backend/app/schemas}}
+
+Les schemas sont des modèles Pydantic. Ils définissent la forme officielle des données qui circulent dans le backend et dans les réponses API.
+
+\begin{longtable}{p{5cm}p{10cm}}
+\textbf{Fichier} & \textbf{Rôle} \\
+\hline
+\code{document.py} & Définit \code{DocumentKind} et \code{DocumentText}. Il représente le résultat brut du parsing: nom de fichier, type de document, texte extrait, nombre de caractères et sections détectées. \\
+\code{cv.py} & Définit \code{StructuredCV}, \code{SkillSet}, \code{Experience}, \code{Education}, \code{Language} et \code{Project}. C'est la forme structurée d'un CV après extraction LLM et normalisation. \\
+\code{job.py} & Définit \code{StructuredJobDescription}. C'est la forme structurée de la fiche de poste: poste, compétences obligatoires, compétences souhaitées, langues, formation, expérience et responsabilités. \\
+\code{experience.py} & Définit les objets liés aux durées d'expérience: période, durée en mois, précision des dates et éventuelles erreurs. \\
+\code{matching.py} & Définit les objets de matching: \code{Evidence}, \code{CategoryScore} et \code{CandidateMatch}. Ils décrivent les scores par catégorie, les preuves et les forces/faiblesses. \\
+\code{ranking.py} & Définit \code{RankedCandidate} et \code{RankingResponse}. C'est la réponse finale envoyée au frontend. \\
+\end{longtable}
+
+\subsection{\code{backend/app/services/documents}}
+
+\subsubsection{\code{docling_parser.py}}
+
+Ce fichier extrait le texte des documents. Pour les PDF, il utilise \code{fitz}, qui vient de PyMuPDF. Pour les DOCX, il utilise \code{python-docx}. Pour les fichiers TXT ou MD, il lit directement le texte.
+
+Après l'extraction, il construit un \code{DocumentText}. Ce résultat contient le texte complet et les sections détectées.
+
+\subsubsection{\code{section_segmenter.py}}
+
+Ce fichier découpe le texte extrait en sections logiques: compétences, expérience, formation, langues, projets, responsabilités, exigences, etc.
+
+Cette segmentation est importante pour le RAG, car un passage venant d'une section \code{experience} ou \code{skills} n'a pas la même valeur qu'un passage générique. Elle aide aussi à filtrer les preuves faibles ou hors sujet.
+
+\subsection{\code{backend/app/services/extraction}}
+
+\subsubsection{\code{prompts.py}}
+
+Ce fichier contient les prompts envoyés au LLM NVIDIA. Les règles disent au modèle de retourner uniquement du JSON, de ne pas inventer, de ne pas traduire, de ne pas inférer des compétences absentes et de respecter le schema demandé.
+
+Le prompt CV structure un CV. Le prompt fiche de poste structure les critères du poste. Ces prompts sont essentiels car ils cadrent le comportement du LLM.
+
+\subsubsection{\code{output_validator.py}}
+
+Ce fichier nettoie et valide la réponse du LLM. Il enlève éventuellement les balises markdown, parse le JSON et vérifie que le résultat respecte le modèle Pydantic demandé.
+
+Il protège le pipeline contre les réponses invalides, incomplètes ou non JSON.
+
+\subsubsection{\code{cv_extractor.py}}
+
+Ce fichier transforme un \code{DocumentText} de CV en \code{StructuredCV}. Il appelle le LLM, valide la sortie, normalise les compétences, les langues et les formations, nettoie les expériences et enrichit certains éléments explicitement présents dans le texte brut.
+
+Il contient aussi des protections contre des erreurs fréquentes: confondre formation et expérience, prendre un stage comme expérience professionnelle, perdre une langue présente dans le texte ou ne pas récupérer une compétence écrite en dehors de la section compétences.
+
+\subsubsection{\code{job_extractor.py}}
+
+Ce fichier transforme la fiche de poste en \code{StructuredJobDescription}. Il appelle le LLM, nettoie les compétences, sépare les langues des compétences, sépare les compétences obligatoires et souhaitées, et reconstruit des responsabilités métiers propres.
+
+Son rôle est crucial: si la fiche de poste est mal structurée, tout le scoring devient moins fiable.
+
+\subsection{\code{backend/app/services/normalization}}
+
+La normalisation rend les textes comparables. Sans normalisation, \code{PowerBI}, \code{Power BI}, \code{power bi} et \code{Microsoft Power BI} seraient considérés comme différents.
+
+\begin{longtable}{p{5cm}p{10cm}}
+\textbf{Fichier} & \textbf{Rôle} \\
+\hline
+\code{text_normalizer.py} & Nettoie le texte: minuscules, accents, espaces, ponctuation et tokenisation. C'est la base commune utilisée par presque tous les matchers. \\
+\code{skill_normalizer.py} & Normalise les compétences et applique les alias depuis \code{skill_aliases.json}. \\
+\code{language_normalizer.py} & Normalise les langues et leurs niveaux: français, anglais, arabe, fluent, professional, native, etc. \\
+\code{education_normalizer.py} & Normalise les niveaux de formation et calcule un rang numérique. \\
+\code{job_title_normalizer.py} & Normalise les titres de poste pour comparer des intitulés proches. \\
+\code{date_normalizer.py} & Interprète les dates en français et anglais, par exemple \code{Juin 2022}, \code{Mar 2022}, \code{Présent}. \\
+\end{longtable}
+
+\subsection{\code{backend/app/services/experience}}
+
+\subsubsection{\code{duration_calculator.py}}
+
+Ce fichier calcule la durée des expériences professionnelles. Il parse les dates de début et de fin, calcule le nombre de mois, et enrichit chaque expérience avec une durée.
+
+\subsubsection{\code{overlap_manager.py}}
+
+Ce fichier évite de compter deux fois des expériences qui se chevauchent. Il fusionne les périodes et calcule le total unique en mois.
+
+\subsubsection{\code{relevance_calculator.py}}
+
+Ce fichier évalue si une expérience est pertinente pour le poste. Il regarde le titre du poste, les compétences utilisées et la proximité entre les missions du CV et les responsabilités de la fiche.
+
+\subsection{\code{backend/app/services/retrieval}}
+
+\subsubsection{\code{chunk_builder.py}}
+
+Ce fichier découpe les sections de CV en chunks. Un chunk est un petit morceau de texte assez court pour être vectorisé et récupéré précisément.
+
+\subsubsection{\code{section_indexer.py}}
+
+Ce fichier prend les chunks, appelle le modèle d'embedding NVIDIA, puis insère les vecteurs dans PostgreSQL via le vector store.
+
+\subsubsection{\code{semantic_retriever.py}}
+
+Ce fichier construit la recherche RAG. Il transforme la requête issue de la fiche de poste en vecteur, cherche les chunks les plus proches dans PostgreSQL et retourne les passages pertinents.
+
+\subsection{\code{backend/app/services/matching}}
+
+Les matchers comparent le CV structuré et les preuves récupérées avec la fiche de poste structurée.
+
+\begin{longtable}{p{5cm}p{10cm}}
+\textbf{Fichier} & \textbf{Rôle} \\
+\hline
+\code{skill_matcher.py} & Compare les compétences du candidat avec les compétences obligatoires et souhaitées. Les compétences obligatoires pèsent plus lourd. Les compétences souhaitées sont plutôt un bonus. \\
+\code{language_matcher.py} & Vérifie la présence des langues demandées. Le scoring est basé principalement sur la présence, avec détails sur les niveaux si disponibles. \\
+\code{responsibility_matcher.py} & Vérifie si les responsabilités du poste sont prouvées par les missions, projets ou passages RAG du CV. Il distingue preuve directe, preuve partielle et absence de preuve. \\
+\code{experience_matcher.py} & Compare la durée d'expérience pertinente avec l'exigence de la fiche de poste. Si aucune durée minimale n'est demandée, la catégorie devient non applicable. \\
+\code{education_matcher.py} & Compare le niveau de formation demandé avec le niveau détecté dans le CV. \\
+\code{certification_matcher.py} & Prépare le matching des certifications. Si aucune certification n'est réellement exploitée, cette catégorie ne doit pas influencer artificiellement le classement. \\
+\end{longtable}
+
+\subsection{\code{backend/app/services/scoring}}
+
+\subsubsection{\code{weights.py}}
+
+Ce fichier charge les poids de scoring depuis \code{scoring_weights.json}. Les poids sont normalisés pour que leur somme soit égale à 1.
+
+\subsubsection{\code{scoring_engine.py}}
+
+Ce fichier appelle tous les matchers applicables, redistribue les poids si certains critères ne sont pas présents dans la fiche de poste, calcule les scores pondérés et construit un \code{CandidateMatch}.
+
+Il évite de donner automatiquement 100\% à une catégorie absente. Une catégorie absente devient non applicable et son poids est redistribué aux autres catégories.
+
+\subsubsection{\code{explanation_builder.py}}
+
+Ce fichier transforme les scores en phrases lisibles: forces et faiblesses. Il explique par exemple quelles compétences obligatoires sont trouvées, quelles responsabilités sont partiellement prouvées et quels critères restent manquants.
+
+\subsection{\code{backend/app/services/ranking}}
+
+\subsubsection{\code{ranking_engine.py}}
+
+Ce fichier trie les candidats par score final décroissant. Il gère aussi les égalités avec une tolérance de score, afin d'afficher des rangs \code{ex aequo} lorsque les scores sont trop proches pour justifier une différence réelle.
+
+\subsection{\code{backend/app/services/orchestration}}
+
+L'orchestration relie toutes les briques précédentes.
+
+\subsubsection{\code{analyze_job_pipeline.py}}
+
+Ce pipeline lit la fiche de poste, extrait son texte, puis produit une fiche structurée avec le LLM NVIDIA.
+
+\subsubsection{\code{analyze_cv_pipeline.py}}
+
+Ce pipeline lit un CV, extrait son texte, puis produit un CV structuré avec le LLM NVIDIA.
+
+\subsubsection{\code{batch_ranking_pipeline.py}}
+
+Ce fichier est la chaîne complète de classement. Il crée un namespace unique pour l'analyse, traite la fiche de poste, traite chaque CV, enrichit les compétences explicitement présentes, indexe les chunks en embeddings, récupère les preuves RAG, calcule le score de chaque candidat, classe les candidats et enregistre le résultat dans PostgreSQL.
+
+À la fin, les vecteurs temporaires du namespace sont nettoyés. Cela garantit que chaque test recommence avec les documents envoyés, sans mélanger les anciens chunks avec les nouveaux.
+
+\subsection{\code{backend/scripts}}
+
+\begin{longtable}{p{5cm}p{10cm}}
+\textbf{Script} & \textbf{Rôle} \\
+\hline
+\code{analyze_samples.py} & Lance une analyse depuis les fichiers du dossier \code{samples} et génère un résultat local exploitable pour tester sans frontend. \\
+\code{check_nvidia_api.py} & Vérifie que les endpoints NVIDIA LLM et embeddings répondent correctement. \\
+\code{free_port.py} & Aide à libérer un port déjà occupé, par exemple \code{8002}. \\
+\code{initialize_databases.py} & Initialise les tables PostgreSQL définies par SQLAlchemy. \\
+\code{render_result_report.py} & Transforme le JSON de résultat en rapport HTML lisible. \\
+\code{run_backend.sh} & Script de lancement backend pour environnement Linux. \\
+\end{longtable}
+
+\subsection{\code{backend/tests}}
+
+Les tests vérifient les parties critiques du backend. Les tests unitaires vérifient la normalisation, l'expérience, le matching, le scoring, l'extraction et le ranking. Les tests d'intégration vérifient le pipeline de ranking et l'API. \code{test_health.py} vérifie que la route de santé répond correctement.
+
+\section{Frontend}
+
+\subsection{Rôle général du frontend}
+
+Le frontend est l'interface utilisateur. Il permet de choisir une fiche de poste, choisir un nombre libre de CV, lancer l'analyse, afficher l'état du pipeline, puis afficher le classement final et le détail des résultats.
+
+Il est construit avec React, TypeScript et Vite. React gère les composants, TypeScript sécurise les types, Vite lance le serveur de développement et configure le proxy vers FastAPI.
+
+\subsection{\code{frontend/package.json}}
+
+Ce fichier décrit le projet frontend et ses dépendances. Il contient les scripts:
+
+\begin{itemize}[leftmargin=*]
+  \item \code{npm run dev}: lance Vite en développement.
+  \item \code{npm run build}: compile TypeScript et produit une version de production.
+  \item \code{npm run preview}: prévisualise le build.
+\end{itemize}
+
+Les dépendances principales sont \code{react}, \code{react-dom}, \code{vite}, \code{typescript} et \code{lucide-react}.
+
+\subsection{\code{frontend/vite.config.ts}}
+
+Ce fichier configure Vite. Le point important est le proxy:
+
+\begin{verbatim}
+/api -> http://127.0.0.1:8002
+\end{verbatim}
+
+Grâce à ce proxy, le frontend peut appeler \code{/api/ranking/analyze} sans problème CORS local. Vite transmet automatiquement la requête au backend FastAPI.
+
+\subsection{\code{frontend/src/main.tsx}}
+
+Ce fichier est le point d'entrée React. Il importe \code{App}, importe \code{styles.css}, puis monte l'application dans l'élément HTML \code{root}.
+
+\subsection{\code{frontend/src/App.tsx}}
+
+Ce fichier contient la logique principale de l'interface.
+
+\subsubsection{Types TypeScript}
+
+Les types \code{Evidence}, \code{CategoryScore}, \code{CandidateMatch}, \code{RankedCandidate}, \code{StructuredJob} et \code{RankingResponse} reproduisent côté frontend la structure retournée par le backend. Cela permet d'afficher les résultats proprement sans manipuler des objets inconnus.
+
+\subsubsection{État React}
+
+Le composant \code{App} garde plusieurs états:
+
+\begin{itemize}[leftmargin=*]
+  \item \code{jobFile}: fiche de poste sélectionnée.
+  \item \code{cvFiles}: liste des CV sélectionnés.
+  \item \code{isAnalyzing}: indique si l'analyse est en cours.
+  \item \code{progress}: progression visuelle du pipeline.
+  \item \code{result}: réponse finale du backend.
+  \item \code{error}: message d'erreur affiché à l'utilisateur.
+\end{itemize}
+
+\subsubsection{Upload et appel API}
+
+La fonction \code{handleAnalyze} construit un \code{FormData}. Elle ajoute la fiche sous le champ \code{job_file}, ajoute chaque CV sous le champ \code{cv_files}, puis appelle:
+
+\begin{verbatim}
+POST /api/ranking/analyze
+\end{verbatim}
+
+Le frontend n'analyse pas les CV lui-même. Il transmet les fichiers et affiche la réponse du backend.
+
+\subsubsection{Composants d'affichage}
+
+\begin{longtable}{p{5cm}p{10cm}}
+\textbf{Composant} & \textbf{Rôle} \\
+\hline
+\code{FilePicker} & Affiche un bloc de sélection de fichier pour la fiche de poste ou les CV. \\
+\code{ResultsView} & Affiche la réponse globale: résumé, fiche de poste structurée, classement et candidats. \\
+\code{CriteriaPanel} & Affiche les critères extraits de la fiche de poste: compétences obligatoires, souhaitées, langues et responsabilités. \\
+\code{CandidateCard} & Affiche le détail d'un candidat: rang, score, forces, faiblesses et scores par catégorie. \\
+\code{CategoryBlock} & Affiche une catégorie de scoring: score, correspondances, manquants, détails et preuves partielles. \\
+\code{ScoreBadge} & Affiche visuellement le score avec une couleur selon le niveau. \\
+\code{TextList} & Affiche une liste de textes avec un message si la liste est vide. \\
+\end{longtable}
+
+\subsection{\code{frontend/src/styles.css}}
+
+Ce fichier contient toute la mise en page de l'interface: grille principale, panneaux, boutons, cartes, barres de progression, tableau de classement, cartes candidats, blocs de critères, score badges et responsive design.
+
+Les règles responsive permettent à l'interface de rester lisible sur écran large et écran plus petit. Les colonnes de classement sont alignées avec une grille CSS pour éviter les décalages entre rang, candidat, score, forces et faiblesses.
+
+\subsection{\code{frontend/index.html}}
+
+Ce fichier HTML contient le conteneur racine de React. Vite injecte ensuite le bundle JavaScript qui démarre \code{main.tsx}.
+
+\section{Déroulement complet de A à Z}
+
+\begin{enumerate}[leftmargin=*]
+  \item L'utilisateur ouvre le frontend.
+  \item Il sélectionne une fiche de poste.
+  \item Il sélectionne un ou plusieurs CV.
+  \item Le frontend prépare un \code{FormData}.
+  \item Le frontend appelle \code{POST /api/ranking/analyze}.
+  \item FastAPI reçoit les fichiers dans \code{ranking.py}.
+  \item Les fichiers sont sauvegardés dans \code{uploads}.
+  \item \code{BatchRankingPipeline} démarre une nouvelle analyse avec un namespace unique.
+  \item La fiche de poste est parsée par \code{DoclingParser}.
+  \item Son texte est envoyé au LLM NVIDIA via \code{JobExtractor}.
+  \item La sortie JSON est validée par Pydantic.
+  \item Les compétences, langues et responsabilités de la fiche sont normalisées.
+  \item Chaque CV est parsé par \code{DoclingParser}.
+  \item Le texte de chaque CV est envoyé au LLM NVIDIA via \code{CVExtractor}.
+  \item La sortie JSON du CV est validée et normalisée.
+  \item Les compétences explicitement présentes dans le texte brut peuvent être récupérées pour éviter de perdre une information écrite hors section.
+  \item Les sections du CV sont découpées en chunks.
+  \item Les chunks sont envoyés au modèle d'embedding NVIDIA.
+  \item Les vecteurs retournés sont stockés dans PostgreSQL.
+  \item Une requête sémantique est construite depuis la fiche de poste.
+  \item Cette requête est vectorisée avec le même modèle d'embedding NVIDIA.
+  \item PostgreSQL retourne les chunks les plus proches par similarité cosinus.
+  \item Les matchers comparent le CV structuré, la fiche structurée et les preuves RAG.
+  \item Le moteur de scoring calcule les scores par catégorie et le score final.
+  \item Le moteur de ranking trie les candidats et gère les égalités.
+  \item Le backend enregistre le résumé d'analyse dans PostgreSQL.
+  \item Le backend nettoie les vecteurs temporaires du namespace.
+  \item Le frontend reçoit le \code{RankingResponse}.
+  \item Le frontend affiche les critères, le classement, les détails par candidat et les preuves.
+\end{enumerate}
+
+\section{Termes techniques importants}
+
+\begin{longtable}{p{4cm}p{11cm}}
+\textbf{Terme} & \textbf{Explication} \\
+\hline
+FastAPI & Framework Python qui expose les routes HTTP du backend. \\
+Router & Groupe de routes API, par exemple les routes documents ou ranking. \\
+Pydantic & Bibliothèque qui valide et structure les données Python/JSON. \\
+Schema & Forme officielle d'un objet échangé dans l'application. \\
+LLM & Modèle de langage utilisé pour extraire une structure JSON depuis un texte brut. \\
+Embedding & Vecteur numérique représentant le sens d'un texte. \\
+Chunk & Petit morceau de document, utilisé pour l'indexation et la recherche sémantique. \\
+RAG & Technique qui récupère des passages pertinents avant de scorer ou expliquer une réponse. \\
+PostgreSQL & Base de données relationnelle utilisée ici aussi comme stockage vectoriel. \\
+SQLAlchemy & Couche Python qui permet de définir des tables et d'envoyer des requêtes SQL sans écrire tout le SQL manuellement. \\
+\code{create_engine} & Fonction SQLAlchemy qui crée le moteur de connexion à PostgreSQL. \\
+Namespace & Identifiant isolant les vecteurs d'une analyse pour éviter le mélange entre plusieurs tests. \\
+Similarité cosinus & Mesure mathématique qui compare deux vecteurs pour savoir si deux textes sont proches sémantiquement. \\
+Score pondéré & Score d'une catégorie multiplié par son poids dans le classement final. \\
+Evidence & Passage textuel utilisé comme preuve pour justifier un score ou une correspondance. \\
+Vite & Outil de développement frontend qui lance React et configure le proxy local. \\
+React & Bibliothèque JavaScript pour construire l'interface utilisateur. \\
+TypeScript & JavaScript typé, utilisé pour éviter les erreurs de structure côté frontend. \\
+\end{longtable}
+
+\section{Résumé final}
+
+Le backend réalise la partie intelligente et métier: extraction, LLM, embeddings, PostgreSQL, RAG, matching, scoring et ranking. Le frontend réalise l'expérience utilisateur: sélection des fichiers, affichage du pipeline, affichage du classement et lecture détaillée des résultats.
+
+La logique complète fonctionne comme une chaîne fermée: les documents entrent, les textes sont extraits, les structures sont produites, les passages sont vectorisés, les preuves sont récupérées, les scores sont calculés, puis le classement est affiché. Chaque dossier du projet correspond à une responsabilité précise dans cette chaîne.
+
+\end{document}

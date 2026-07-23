@@ -22,3 +22,9 @@ def normalize_skill(skill: str | None) -> str:
 def normalize_skill_list(skills: list[str]) -> list[str]:
     return dedupe_preserve_order([normalize_skill(skill) for skill in skills])
 
+
+def aliases_for_skill(skill: str | None) -> list[str]:
+    canonical = normalize_skill(skill)
+    aliases = [alias for alias, target in _aliases().items() if target == canonical]
+    return dedupe_preserve_order([canonical, *aliases])
+

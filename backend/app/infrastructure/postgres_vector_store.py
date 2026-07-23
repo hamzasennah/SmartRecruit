@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from app.config import Settings
 from app.core.exceptions import ExternalServiceError
-from app.database.models import Base, VectorChunkRecord
+from app.database.models import AnalysisRecord, Base, JobRecord, ResumeRecord, VectorChunkRecord
 
 
 class PostgresVectorStore:
@@ -57,6 +57,80 @@ class PostgresVectorStore:
                 session.commit()
         except self._sqlalchemy_error as exc:
             raise ExternalServiceError(f"Erreur PostgreSQL pendant l'indexation vectorielle: {exc}") from exc
+
+    def create_resume_record(
+        self,
+        filename: str,
+        content_hash: str,
+        candidate_name: str | None = None,
+        text_preview: str = "",
+    ) -> str:
+        record_id = str(uuid4())
+        try:
+            with self._session_factory() as session:
+                session.add(
+                    ResumeRecord(
+                        id=record_id,
+                        filename=filename,
+                        candidate_name=candidate_name,
+                        content_hash=content_hash,
+                        text_preview=text_preview[:1200],
+                    )
+                )
+                session.commit()
+        except self._sqlalchemy_error as exc:
+            raise ExternalServiceError(f"Erreur PostgreSQL pendant l'enregistrement du CV: {exc}") from exc
+        return record_id
+
+    def create_job_record(
+        self,
+        filename: str,
+        content_hash: str,
+        job_title: str | None = None,
+        text_preview: str = "",
+    ) -> str:
+        record_id = str(uuid4())
+        try:
+            with self._session_factory() as session:
+                session.add(
+                    JobRecord(
+                        id=record_id,
+                        filename=filename,
+                        job_title=job_title,
+                        content_hash=content_hash,
+                        text_preview=text_preview[:1200],
+                    )
+                )
+                session.commit()
+        except self._sqlalchemy_error as exc:
+            raise ExternalServiceError(f"Erreur PostgreSQL pendant l'enregistrement de la fiche de poste: {exc}") from exc
+        return record_id
+
+    def create_analysis_record(
+        self,
+        namespace: str,
+        result: dict,
+        summary: str,
+        total_candidates: int,
+        job_id: str | None = None,
+    ) -> str:
+        record_id = str(uuid4())
+        try:
+            with self._session_factory() as session:
+                session.add(
+                    AnalysisRecord(
+                        id=record_id,
+                        namespace=namespace,
+                        job_id=job_id,
+                        total_candidates=total_candidates,
+                        summary=summary,
+                        result_json=json.dumps(result, ensure_ascii=False),
+                    )
+                )
+                session.commit()
+        except self._sqlalchemy_error as exc:
+            raise ExternalServiceError(f"Erreur PostgreSQL pendant l'enregistrement de l'analyse: {exc}") from exc
+        return record_id
 
     def search(self, namespace: str, query_vector: list[float], top_k: int, filters: dict | None = None) -> list[dict]:
         filters = filters or {}

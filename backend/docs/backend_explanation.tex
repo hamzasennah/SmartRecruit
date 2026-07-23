@@ -1,0 +1,906 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{titlesec}
+
+\geometry{margin=2.2cm}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
+\setlist[itemize]{leftmargin=1.2cm}
+\setlist[enumerate]{leftmargin=1.2cm}
+\titleformat{\section}{\Large\bfseries}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{0.8em}{}
+
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{220,220,220}
+\definecolor{darkgreen}{RGB}{20,95,70}
+
+\lstdefinestyle{smartcode}{
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false
+}
+
+\title{\textbf{SmartRecruit Backend}\\Explication technique complete du projet}
+\author{Projet de classement de CV par fiche de poste}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Objectif general du projet}
+
+SmartRecruit est un backend FastAPI qui automatise l'analyse et le classement de CV par rapport a une fiche de poste. L'utilisateur fournit une fiche de poste et une liste libre de CV. Le systeme extrait le texte des documents, demande a un modele LLM de structurer les informations, cree des embeddings reels avec l'API NVIDIA, stocke temporairement les vecteurs dans PostgreSQL, recupere les passages les plus pertinents, calcule un score explicable et retourne un classement final.
+
+Le projet ne cherche pas a inventer des competences absentes. Une competence, une experience, une langue ou une responsabilite ne doit etre prise en compte que si elle est appuyee par une preuve presente dans le texte extrait. Le systeme combine donc deux niveaux:
+
+\begin{itemize}
+  \item un niveau \textbf{IA generative}: extraction structuree de la fiche de poste et des CV avec un LLM NVIDIA;
+  \item un niveau \textbf{RAG}: transformation des sections de CV en vecteurs via embeddings NVIDIA, stockage dans PostgreSQL et recherche semantique des preuves utiles;
+  \item un niveau \textbf{deterministe}: normalisation, validation Pydantic, calcul des durees, matching, ponderation, classement et generation d'explications.
+\end{itemize}
+
+Le scoring peut donner des scores faibles si les preuves sont faibles. C'est attendu: le but n'est pas de produire des scores artificiellement eleves, mais de rester proche de la realite observee dans les documents.
+
+\section{Deroulement complet de A a Z}
+
+\subsection{Chaine fonctionnelle}
+
+La logique complete peut etre presentee comme une chaine fermee:
+
+\begin{enumerate}
+  \item L'utilisateur envoie une fiche de poste et plusieurs CV.
+  \item FastAPI recoit les fichiers via l'endpoint \texttt{/api/ranking/analyze}.
+  \item Les fichiers sont sauvegardes temporairement dans \texttt{uploads/}.
+  \item \texttt{DoclingParser} lit chaque document: PDF, DOCX, TXT ou MD.
+  \item \texttt{section\_segmenter.py} decoupe le texte en sections: competences, experience, formation, langues, projets, etc.
+  \item \texttt{JobExtractor} demande au LLM NVIDIA de convertir la fiche de poste en JSON structure.
+  \item \texttt{CVExtractor} demande au LLM NVIDIA de convertir chaque CV en JSON structure.
+  \item Les sorties du LLM sont validees par Pydantic: si le JSON est invalide ou incoherent, une erreur est remontee.
+  \item Les champs extraits sont normalises: casse, accents, synonymes, niveaux de langue, niveaux d'etude, dates.
+  \item Les sections de chaque CV sont decoupees en chunks.
+  \item Chaque chunk est envoye au modele d'embedding NVIDIA.
+  \item Les vecteurs sont stockes dans PostgreSQL dans la table \texttt{vector\_chunks}.
+  \item Une requete semantique construite depuis la fiche de poste est envoyee au modele d'embedding.
+  \item Les chunks du CV sont compares a la requete par similarite cosinus.
+  \item Les meilleurs passages deviennent des preuves candidates pour le scoring.
+  \item Les matchers comparent le CV et la fiche de poste: competences, experience, responsabilites, formation, langues, soft skills.
+  \item Le moteur de scoring applique les poids et redistribue les poids des criteres absents.
+  \item Le moteur de ranking trie les candidats et gere les ex aequo.
+  \item L'API retourne un \texttt{RankingResponse} contenant le classement, les scores, les preuves et les erreurs eventuelles.
+  \item Le script \texttt{analyze\_samples.py} peut appeler l'API, generer \texttt{result.json} et ouvrir \texttt{result\_report.html}.
+\end{enumerate}
+
+\subsection{Point important sur la memoire}
+
+Le backend ne reutilise pas les vecteurs d'une ancienne analyse. A chaque appel, \texttt{BatchRankingPipeline} cree un namespace unique:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+namespace = f"analysis_{uuid4().hex}"
+\end{lstlisting}
+
+Puis il nettoie ce namespace au debut et a la fin:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+self._vector_store.reset_namespace(namespace)
+...
+finally:
+    self._vector_store.reset_namespace(namespace)
+\end{lstlisting}
+
+Donc la base vectorielle sert pendant l'analyse, mais elle ne garde pas les resultats pour biaiser le test suivant. Les fichiers \texttt{result.json} et \texttt{result\_report.html}, eux, sont seulement des rapports ecrases ou regeneres par script.
+
+\section{Vue generale de l'arbre backend}
+
+\begin{lstlisting}[style=smartcode]
+backend/
+|-- app/
+|   |-- __init__.py
+|   |-- main.py
+|   |-- config.py
+|   |-- dependencies.py
+|   |-- api/
+|   |   |-- __init__.py
+|   |   `-- routes/
+|   |       |-- __init__.py
+|   |       |-- health.py
+|   |       |-- documents.py
+|   |       `-- ranking.py
+|   |-- core/
+|   |   |-- __init__.py
+|   |   |-- constants.py
+|   |   |-- exceptions.py
+|   |   `-- logging_config.py
+|   |-- data/
+|   |   |-- skill_aliases.json
+|   |   |-- job_title_aliases.json
+|   |   |-- education_levels.json
+|   |   |-- language_levels.json
+|   |   `-- scoring_weights.json
+|   |-- database/
+|   |   |-- __init__.py
+|   |   |-- models.py
+|   |   `-- session.py
+|   |-- infrastructure/
+|   |   |-- __init__.py
+|   |   |-- nvidia_llm.py
+|   |   |-- nvidia_embeddings.py
+|   |   `-- postgres_vector_store.py
+|   |-- schemas/
+|   |   |-- __init__.py
+|   |   |-- document.py
+|   |   |-- cv.py
+|   |   |-- job.py
+|   |   |-- experience.py
+|   |   |-- matching.py
+|   |   `-- ranking.py
+|   `-- services/
+|       |-- documents/
+|       |-- extraction/
+|       |-- normalization/
+|       |-- experience/
+|       |-- retrieval/
+|       |-- matching/
+|       |-- scoring/
+|       |-- ranking/
+|       `-- orchestration/
+|-- samples/
+|-- scripts/
+|-- storage/
+|-- tests/
+|-- uploads/
+|-- requirements.txt
+|-- docker-compose.yml
+|-- .env.example
+`-- README.md
+\end{lstlisting}
+
+\section{Racine du backend}
+
+\subsection{\texttt{requirements.txt}}
+
+Ce fichier liste les dependances Python necessaires:
+
+\begin{itemize}
+  \item \texttt{fastapi}: framework API;
+  \item \texttt{uvicorn}: serveur ASGI pour executer FastAPI;
+  \item \texttt{python-multipart}: lecture des fichiers uploades;
+  \item \texttt{pydantic}: validation des schemas;
+  \item \texttt{python-dotenv}: chargement du fichier \texttt{.env};
+  \item \texttt{httpx}: appels HTTP vers NVIDIA et vers l'API locale dans les scripts;
+  \item \texttt{pymupdf}: extraction de texte des PDF via le module \texttt{fitz};
+  \item \texttt{python-docx}: extraction de texte des DOCX;
+  \item \texttt{SQLAlchemy}: acces a PostgreSQL;
+  \item \texttt{psycopg}: driver PostgreSQL;
+  \item \texttt{pytest}: tests automatises.
+\end{itemize}
+
+\subsection{\texttt{.env.example}}
+
+Ce fichier montre les variables attendues. Il ne contient pas la vraie cle, seulement le format:
+
+\begin{lstlisting}[style=smartcode]
+NVIDIA_API_KEY=...
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_LLM_MODEL=meta/llama-3.1-8b-instruct
+NVIDIA_EMBEDDING_MODEL=nvidia/llama-nemotron-embed-1b-v2
+NVIDIA_TEMPERATURE=0.1
+DATABASE_URL=postgresql+psycopg://...
+\end{lstlisting}
+
+\texttt{NVIDIA\_TEMPERATURE=0.1} reduit la variabilite de generation du LLM. Cela ne garantit pas une identite parfaite a 100\%, car un service LLM peut rester legerement non deterministe, mais cela rend les sorties beaucoup plus stables.
+
+\subsection{\texttt{docker-compose.yml}}
+
+Ce fichier peut servir a demarrer PostgreSQL si l'utilisateur choisit Docker. Le backend n'est pas oblige d'utiliser Docker: il suffit que PostgreSQL soit accessible via \texttt{DATABASE\_URL}.
+
+\subsection{\texttt{samples/}}
+
+Ce dossier contient des fichiers de test locaux. La convention actuelle est:
+
+\begin{itemize}
+  \item \texttt{fiche\_poste.pdf}: fiche de poste;
+  \item \texttt{cv1.pdf}, \texttt{cv2.pdf}, etc.: CV candidats.
+\end{itemize}
+
+Le script \texttt{analyze\_samples.py} peut analyser tous les PDF du dossier sauf la fiche de poste. Il n'y a pas de limite logique sur le nombre de CV; les limites pratiques sont le temps, le quota API, la taille des fichiers et la memoire.
+
+\subsection{\texttt{uploads/}}
+
+Ce dossier recoit temporairement les fichiers envoyes par l'API. Il sert au mode web/API, pas au script \texttt{samples}. 
+
+\subsection{\texttt{storage/}}
+
+Ce dossier contient des sous-dossiers prevus pour stocker des documents ou des resultats. Dans la logique actuelle, le classement principal est retourne par l'API et les rapports de test sont generes a la racine du backend sous forme de \texttt{result.json} et \texttt{result\_report.html}.
+
+\section{\texttt{app/main.py}: point d'entree FastAPI}
+
+\texttt{main.py} construit l'application FastAPI:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+app = FastAPI(
+    title=settings.app_name,
+    version="0.1.0",
+    description="Backend SmartRecruit..."
+)
+\end{lstlisting}
+
+Il ajoute CORS pour permettre a un futur frontend de communiquer avec l'API:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.allowed_origins),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+\end{lstlisting}
+
+Puis il branche les routers:
+
+\begin{itemize}
+  \item \texttt{/api/health}: verifier l'etat du backend;
+  \item \texttt{/api/documents/parse}: tester l'extraction d'un document;
+  \item \texttt{/api/ranking/analyze}: lancer l'analyse complete fiche de poste + CV.
+\end{itemize}
+
+\section{\texttt{app/config.py}: configuration}
+
+\texttt{config.py} centralise les variables de configuration. Il charge \texttt{.env} avec \texttt{load\_dotenv}, puis expose une classe \texttt{Settings}. Les proprietes lisent les variables d'environnement:
+
+\begin{itemize}
+  \item \texttt{nvidia\_api\_key}: cle API obligatoire;
+  \item \texttt{nvidia\_base\_url}: URL de l'API NVIDIA;
+  \item \texttt{llm\_model}: modele de generation;
+  \item \texttt{embedding\_model}: modele d'embedding;
+  \item \texttt{llm\_temperature}: temperature du LLM;
+  \item \texttt{database\_url}: connexion PostgreSQL;
+  \item \texttt{upload\_dir}, \texttt{storage\_dir}, \texttt{data\_dir}: chemins internes.
+\end{itemize}
+
+L'interet est d'eviter de disperser les constantes sensibles dans le code. Si le modele change, on modifie \texttt{.env}, pas les fichiers metier.
+
+\section{\texttt{app/dependencies.py}: injection des composants}
+
+Ce fichier fabrique les objets principaux:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+BatchRankingPipeline(
+    parser=DoclingParser(),
+    llm_client=get_llm_client(settings),
+    embedding_client=get_embedding_client(settings),
+    vector_store=get_vector_store(settings),
+)
+\end{lstlisting}
+
+C'est le point de composition. FastAPI appelle cette fonction dans les routes. Les services metier ne connaissent pas les details HTTP de l'API NVIDIA ni la maniere dont PostgreSQL est initialise; ils recoivent simplement des objets capables de generer du JSON, produire des embeddings et stocker des vecteurs.
+
+\section{Dossier \texttt{app/api/routes}}
+
+\subsection{\texttt{health.py}}
+
+Retourne un diagnostic simple:
+
+\begin{itemize}
+  \item l'application repond;
+  \item le modele LLM configure;
+  \item le modele embedding configure;
+  \item la presence ou non de la cle NVIDIA;
+  \item la presence ou non de \texttt{DATABASE\_URL}.
+\end{itemize}
+
+Ce endpoint est utile avant un test complet, car il permet de verifier que la configuration minimale est visible par l'application.
+
+\subsection{\texttt{documents.py}}
+
+Expose \texttt{POST /api/documents/parse}. Il sert a tester l'extraction seule, sans classement. L'utilisateur envoie un document et obtient:
+
+\begin{itemize}
+  \item le nom du fichier;
+  \item le type de document;
+  \item le texte extrait;
+  \item le nombre de caracteres;
+  \item les sections detectees.
+\end{itemize}
+
+C'est important pour debugger. Si un CV est mal classe, il faut d'abord verifier que le texte extrait contient bien les informations visibles dans le PDF.
+
+\subsection{\texttt{ranking.py}}
+
+Expose \texttt{POST /api/ranking/analyze}. C'est l'endpoint principal:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+async def analyze_ranking(
+    job_file: UploadFile = File(...),
+    cv_files: list[UploadFile] = File(...),
+    top_k: int = Form(default=5, ge=1, le=20)
+)
+\end{lstlisting}
+
+\texttt{job\_file} est la fiche de poste. \texttt{cv\_files} est une liste de CV. Le nombre de CV n'est pas limite dans la signature. \texttt{top\_k} limite seulement le nombre de passages recuperes par CV pour l'explication RAG.
+
+\section{Dossier \texttt{app/core}}
+
+\subsection{\texttt{constants.py}}
+
+Contient les extensions supportees:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+\end{lstlisting}
+
+Cela evite d'accepter des formats non geres.
+
+\subsection{\texttt{exceptions.py}}
+
+Definit des exceptions metier:
+
+\begin{itemize}
+  \item \texttt{SmartRecruitError}: erreur generale du projet;
+  \item \texttt{DocumentParsingError}: probleme d'extraction de document;
+  \item \texttt{ExternalServiceError}: probleme NVIDIA ou PostgreSQL;
+  \item \texttt{OutputValidationError}: sortie LLM invalide.
+\end{itemize}
+
+L'interet est de distinguer une erreur de fichier, une erreur de modele et une erreur interne.
+
+\subsection{\texttt{logging\_config.py}}
+
+Configure les logs Python avec un format uniforme: date, niveau, nom du module, message. Les logs aident a comprendre les erreurs NVIDIA, les retries et les problemes de JSON.
+
+\section{Dossier \texttt{app/data}}
+
+\subsection{\texttt{skill\_aliases.json}}
+
+Contient les synonymes de competences. Exemple logique: \texttt{PowerBI} et \texttt{Microsoft Power BI} doivent etre normalises vers \texttt{power bi}. Ce fichier ameliore le matching sans inventer de competence: il ne fait que rapprocher des formes equivalentes.
+
+\subsection{\texttt{job\_title\_aliases.json}}
+
+Normalise les intitules de poste. Par exemple, \texttt{Data Analyst}, \texttt{Analyste Data} ou variantes proches peuvent etre ramenees a une forme commune.
+
+\subsection{\texttt{education\_levels.json}}
+
+Associe les niveaux d'etude a des rangs numeriques. Cela permet de comparer un niveau candidat avec un niveau minimum demande.
+
+\subsection{\texttt{language\_levels.json}}
+
+Associe les niveaux de langue a des rangs. Exemple: courant, professionnel, bilingue peuvent etre compares avec un minimum requis.
+
+\subsection{\texttt{scoring\_weights.json}}
+
+Definit les poids de scoring: competences techniques, experience, responsabilites, formation, langues et soft skills. Le moteur redistribue les poids si une categorie n'est pas applicable.
+
+\section{Dossier \texttt{app/database}}
+
+\subsection{\texttt{models.py}}
+
+Definit le modele SQLAlchemy \texttt{VectorChunkRecord}. Chaque ligne represente un chunk vectorise:
+
+\begin{itemize}
+  \item \texttt{id}: identifiant unique;
+  \item \texttt{namespace}: identifiant de l'analyse courante;
+  \item \texttt{document\_id}: nom du CV;
+  \item \texttt{section}: section du CV;
+  \item \texttt{chunk\_index}: position du chunk;
+  \item \texttt{text}: texte source;
+  \item \texttt{vector\_json}: embedding stocke sous forme JSON;
+  \item \texttt{created\_at}: date de creation.
+\end{itemize}
+
+\subsection{\texttt{session.py}}
+
+Construit le moteur SQLAlchemy a partir de \texttt{DATABASE\_URL}. Si la variable est absente, une erreur explicite est lancee. Cela force le backend a travailler avec PostgreSQL quand la base vectorielle est necessaire.
+
+\section{Dossier \texttt{app/infrastructure}}
+
+\subsection{\texttt{nvidia\_llm.py}}
+
+Ce fichier contient le client LLM NVIDIA. Il appelle:
+
+\begin{lstlisting}[style=smartcode]
+POST /chat/completions
+\end{lstlisting}
+
+La methode centrale est \texttt{generate\_json(prompt)}. Elle envoie un prompt et exige une reponse JSON. Elle utilise:
+
+\begin{itemize}
+  \item \texttt{model}: modele configure;
+  \item \texttt{temperature}: controle la variabilite;
+  \item \texttt{max\_tokens}: limite de sortie;
+  \item \texttt{timeout}: temps maximal d'attente;
+  \item \texttt{max\_retries}: nombre de tentatives en cas d'erreur temporaire.
+\end{itemize}
+
+Si la reponse n'est pas un JSON exploitable, le backend leve une erreur. Il ne remplace pas le modele par un faux calcul local.
+
+\subsection{\texttt{nvidia\_embeddings.py}}
+
+Ce fichier contient le client d'embedding NVIDIA. Il appelle:
+
+\begin{lstlisting}[style=smartcode]
+POST /embeddings
+\end{lstlisting}
+
+Il separe deux usages:
+
+\begin{itemize}
+  \item \texttt{embed\_passages}: vectorise les chunks de CV;
+  \item \texttt{embed\_query}: vectorise la requete construite depuis la fiche de poste.
+\end{itemize}
+
+Un embedding est un vecteur numerique qui represente le sens d'un texte. Le modele transforme le texte en nombres; ensuite, PostgreSQL stocke ces nombres.
+
+\subsection{\texttt{postgres\_vector\_store.py}}
+
+Ce fichier joue le role de base vectorielle dans PostgreSQL. Il gere:
+
+\begin{itemize}
+  \item \texttt{reset\_namespace}: supprime les vecteurs d'une analyse donnee;
+  \item \texttt{upsert}: insere les chunks et leurs vecteurs;
+  \item \texttt{search}: recupere les chunks les plus proches d'une requete.
+\end{itemize}
+
+La similarite cosinus n'est pas un modele provisoire. C'est la formule mathematique standard pour comparer deux vecteurs d'embedding:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+cosine = dot(query_vector, passage_vector) / (
+    norm(query_vector) * norm(passage_vector)
+)
+\end{lstlisting}
+
+Les vecteurs viennent bien du modele d'embedding NVIDIA. La similarite cosinus ne remplace pas le modele; elle compare ses sorties.
+
+\section{Dossier \texttt{app/schemas}}
+
+Les schemas Pydantic definissent les contrats de donnees. Ils sont essentiels parce que le LLM peut produire du texte variable. Pydantic verifie que chaque reponse respecte la structure attendue.
+
+\subsection{\texttt{document.py}}
+
+Definit \texttt{DocumentKind} et \texttt{DocumentText}. \texttt{DocumentText} contient le texte brut extrait et les sections detectees.
+
+\subsection{\texttt{cv.py}}
+
+Definit la structure d'un CV:
+
+\begin{itemize}
+  \item \texttt{SkillSet}: competences techniques, soft skills, outils;
+  \item \texttt{Experience}: poste, entreprise, dates, missions, competences utilisees;
+  \item \texttt{Education}: diplome, niveau, institution, annees;
+  \item \texttt{Language}: langue, niveau, niveau normalise;
+  \item \texttt{Project}: projet et competences utilisees;
+  \item \texttt{StructuredCV}: objet global du candidat.
+\end{itemize}
+
+\subsection{\texttt{job.py}}
+
+Definit la structure de la fiche de poste:
+
+\begin{itemize}
+  \item \texttt{RequiredSkills}: competences obligatoires, souhaitees et soft skills;
+  \item \texttt{ExperienceRequirement}: mois minimum et titres preferes;
+  \item \texttt{EducationRequirement}: niveau minimum et domaines acceptes;
+  \item \texttt{LanguageRequirement}: langue et niveau minimum;
+  \item \texttt{StructuredJobDescription}: fiche de poste complete.
+\end{itemize}
+
+\subsection{\texttt{experience.py}}
+
+Definit les objets de duree d'experience: date de debut, date de fin, nombre de mois, precision, confiance et erreur eventuelle.
+
+\subsection{\texttt{matching.py}}
+
+Definit les objets de sortie du matching:
+
+\begin{itemize}
+  \item \texttt{Evidence}: preuve textuelle issue du CV;
+  \item \texttt{CategoryScore}: score d'une categorie;
+  \item \texttt{CandidateMatch}: score final, forces, faiblesses et preuves.
+\end{itemize}
+
+\subsection{\texttt{ranking.py}}
+
+Definit la reponse finale:
+
+\begin{itemize}
+  \item \texttt{RankedCandidate}: candidat classe avec son rang;
+  \item \texttt{RankingResponse}: fiche de poste structuree, total de candidats, classement et erreurs.
+\end{itemize}
+
+\section{Dossier \texttt{app/services/documents}}
+
+\subsection{\texttt{docling\_parser.py}}
+
+Malgre son nom, ce fichier utilise actuellement:
+
+\begin{itemize}
+  \item \texttt{PyMuPDF} via \texttt{import fitz} pour les PDF;
+  \item \texttt{python-docx} pour les DOCX;
+  \item la lecture texte standard pour TXT et MD.
+\end{itemize}
+
+Pour un PDF, le code ouvre le document et parcourt les pages:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+with fitz.open(path) as doc:
+    for page in doc:
+        page_text = page.get_text("text")
+\end{lstlisting}
+
+Ensuite il retourne un \texttt{DocumentText}. Ce service ne fait pas encore d'OCR pour les PDF scannes. Si un PDF est image sans texte selectable, il risque de produire peu ou pas de texte.
+
+\subsection{\texttt{section\_segmenter.py}}
+
+Ce fichier detecte les sections du document a partir des titres: competences, experience, formation, langues, projets, responsabilites, exigences. L'interet est de donner au RAG des chunks mieux contextualises. Une preuve venant de la section \texttt{experience} n'a pas la meme valeur qu'une preuve venant de la section \texttt{languages}.
+
+\section{Dossier \texttt{app/services/extraction}}
+
+\subsection{\texttt{prompts.py}}
+
+Ce fichier contient les consignes donnees au modele. Les regles imposent:
+
+\begin{itemize}
+  \item JSON uniquement;
+  \item aucune invention;
+  \item aucune competence sans preuve directe;
+  \item aucune langue dans les competences;
+  \item aucune experience creee depuis la formation ou les projets personnels;
+  \item preservation des dates telles qu'elles sont ecrites.
+\end{itemize}
+
+C'est la partie qui encadre le comportement du LLM.
+
+\subsection{\texttt{output\_validator.py}}
+
+Ce fichier charge le JSON produit par le modele et le valide avec Pydantic:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+return model.model_validate(payload)
+\end{lstlisting}
+
+Si le modele renvoie une date sous forme de chaine la ou un entier est attendu, ou s'il oublie un champ important, cette couche permet de detecter le probleme au lieu de continuer avec des donnees mauvaises.
+
+\subsection{\texttt{job\_extractor.py}}
+
+Ce service transforme la fiche de poste brute en \texttt{StructuredJobDescription}. Il fait trois choses:
+
+\begin{enumerate}
+  \item appel du LLM avec \texttt{JOB\_EXTRACTION\_PROMPT};
+  \item normalisation des competences, langues et niveaux;
+  \item correction metier de la fiche: separation obligatoire/souhaite, nettoyage des responsabilites.
+\end{enumerate}
+
+Par exemple, une phrase comme ``Power BI, Excel and Snowflake are a must'' devient des competences obligatoires. Une phrase comme ``Foundry would be good'' devient une competence souhaitee.
+
+\subsection{\texttt{cv\_extractor.py}}
+
+Ce service transforme un CV brut en \texttt{StructuredCV}. Il appelle le LLM, valide la sortie, normalise les champs et enrichit certaines competences explicitement presentes dans le texte brut.
+
+L'enrichissement brut ne devine rien. Il sert a eviter qu'une competence ecrite dans une zone mal lue du CV soit perdue par le LLM. Exemple: si \texttt{Microsoft Excel} apparait dans la ligne outils, le systeme peut l'ajouter comme \texttt{excel}. 
+
+Le fichier filtre aussi les fausses experiences: formations, diplomes ou fragments de missions ne doivent pas devenir des experiences professionnelles.
+
+\section{Dossier \texttt{app/services/normalization}}
+
+La normalisation transforme des variantes textuelles en formes comparables.
+
+\subsection{\texttt{text\_normalizer.py}}
+
+Met le texte en minuscules, supprime les accents, remplace certains separateurs et decoupe en tokens. C'est la base commune de toutes les comparaisons.
+
+\subsection{\texttt{skill\_normalizer.py}}
+
+Charge \texttt{skill\_aliases.json} et transforme les synonymes de competences vers une forme canonique.
+
+\subsection{\texttt{job\_title\_normalizer.py}}
+
+Normalise les intitules de poste. Utile pour comparer une experience de CV avec les titres preferes de la fiche.
+
+\subsection{\texttt{education\_normalizer.py}}
+
+Normalise les diplomes et retourne un rang numerique pour comparer un niveau candidat avec un niveau exige.
+
+\subsection{\texttt{language\_normalizer.py}}
+
+Normalise les langues et leurs niveaux. Exemple: \texttt{French} devient \texttt{francais}; \texttt{English} devient \texttt{anglais}.
+
+\subsection{\texttt{date\_normalizer.py}}
+
+Parse les dates sous plusieurs formes: \texttt{03/2022}, \texttt{Mar 2022}, \texttt{Juil 2022}, \texttt{2020}, \texttt{Present}. Il permet de calculer des durees d'experience.
+
+\section{Dossier \texttt{app/services/experience}}
+
+\subsection{\texttt{duration\_calculator.py}}
+
+Convertit les dates d'une experience en nombre de mois. Il prend aussi en charge les durees declarees comme ``3 ans'' ou ``6 mois''.
+
+\subsection{\texttt{overlap\_manager.py}}
+
+Fusionne les periodes qui se chevauchent. Sans ce fichier, deux experiences simultanees pourraient etre additionnees deux fois.
+
+\subsection{\texttt{relevance\_calculator.py}}
+
+Calcule la pertinence d'une experience par rapport au poste. Il compare:
+
+\begin{itemize}
+  \item le titre de poste;
+  \item les competences utilisees;
+  \item les missions;
+  \item les responsabilites demandees.
+\end{itemize}
+
+Une experience JavaScript ne doit pas compter comme experience Data Analyst si les signaux metier ne correspondent pas.
+
+\section{Dossier \texttt{app/services/retrieval}}
+
+\subsection{\texttt{chunk\_builder.py}}
+
+Decoupe les sections en chunks. Un chunk est un morceau de texte assez court pour etre vectorise et compare.
+
+\subsection{\texttt{section\_indexer.py}}
+
+Vectorise les chunks avec \texttt{embed\_passages} puis les stocke dans PostgreSQL.
+
+\subsection{\texttt{semantic\_retriever.py}}
+
+Vectorise la requete de fiche de poste avec \texttt{embed\_query}, puis cherche les chunks les plus proches dans PostgreSQL.
+
+\section{Dossier \texttt{app/services/matching}}
+
+\subsection{\texttt{skill\_matcher.py}}
+
+Compare les competences du candidat avec les competences obligatoires et souhaitees. Le score donne plus d'importance aux obligatoires:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+score = 0.8 * mandatory_score + 0.2 * preferred_score
+\end{lstlisting}
+
+Les listes \texttt{missing\_mandatory} et \texttt{missing\_preferred} restent separees.
+
+\subsection{\texttt{responsibility\_matcher.py}}
+
+Compare les responsabilites de la fiche avec les missions et preuves du CV. Il distingue:
+
+\begin{itemize}
+  \item \texttt{full}: preuve directe forte;
+  \item \texttt{partial}: preuve partielle, par exemple reporting ou visualisation sans outil exact;
+  \item \texttt{none}: aucune preuve suffisante.
+\end{itemize}
+
+Le fichier contient des garde-fous pour eviter de valider une responsabilite seulement parce qu'un mot faible apparait. Exemple: \texttt{Azure DevOps} ne prouve pas automatiquement une disponibilite de donnees dans \texttt{Snowflake/Azure}.
+
+\subsection{\texttt{experience\_matcher.py}}
+
+Compare l'experience pertinente avec l'experience minimale demandee. Si la fiche ne demande aucune duree, la categorie est ignoree et son poids est redistribue.
+
+\subsection{\texttt{education\_matcher.py}}
+
+Compare le niveau de formation du candidat avec le niveau minimum exige.
+
+\subsection{\texttt{language\_matcher.py}}
+
+Compare les langues et les niveaux. Si la fiche ne demande aucune langue, la categorie est ignoree.
+
+\subsection{\texttt{certification\_matcher.py}}
+
+Fichier present pour extension future. Actuellement, il retourne une structure simple. Il peut etre enrichi si les certifications deviennent un critere important.
+
+\section{Dossier \texttt{app/services/scoring}}
+
+\subsection{\texttt{weights.py}}
+
+Charge les poids depuis \texttt{scoring\_weights.json}. Les poids sont normalises pour que leur somme fasse 1.
+
+\subsection{\texttt{scoring\_engine.py}}
+
+Agrege les resultats des matchers. Il ignore les categories non applicables et redistribue leurs poids aux categories restantes. Cela evite de donner automatiquement 100\% a un critere absent de la fiche.
+
+\subsection{\texttt{explanation\_builder.py}}
+
+Construit des forces et faiblesses lisibles:
+
+\begin{itemize}
+  \item competences obligatoires trouvees;
+  \item competences souhaitees trouvees;
+  \item responsabilites prouvees ou partiellement prouvees;
+  \item competences obligatoires manquantes;
+  \item responsabilites sans preuve directe;
+  \item soft skills manquants.
+\end{itemize}
+
+Cette couche n'ajoute pas de score. Elle explique seulement les resultats calcules.
+
+\section{Dossier \texttt{app/services/ranking}}
+
+\subsection{\texttt{ranking\_engine.py}}
+
+Trie les candidats par score final decroissant. Il gere aussi les ex aequo avec une tolerance:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+TIE_SCORE_TOLERANCE = 0.5
+\end{lstlisting}
+
+Deux candidats dont les scores sont tres proches peuvent donc etre affiches au meme rang. Cela evite de donner une precision artificielle quand l'ecart est trop faible.
+
+\section{Dossier \texttt{app/services/orchestration}}
+
+\subsection{\texttt{analyze\_job\_pipeline.py}}
+
+Chaine specifique a la fiche de poste: parser le document puis extraire les criteres avec le LLM.
+
+\subsection{\texttt{analyze\_cv\_pipeline.py}}
+
+Chaine specifique a un CV: parser le document puis extraire le profil structure avec le LLM.
+
+\subsection{\texttt{batch\_ranking\_pipeline.py}}
+
+C'est l'orchestrateur principal. Il coordonne:
+
+\begin{enumerate}
+  \item extraction de la fiche;
+  \item boucle sur tous les CV;
+  \item extraction de chaque CV;
+  \item indexation vectorielle des sections;
+  \item retrieval des preuves;
+  \item scoring candidat;
+  \item ranking final;
+  \item nettoyage du namespace PostgreSQL.
+\end{enumerate}
+
+\section{Dossier \texttt{scripts}}
+
+\subsection{\texttt{check\_nvidia\_api.py}}
+
+Teste les trois appels NVIDIA importants:
+
+\begin{itemize}
+  \item \texttt{/models};
+  \item \texttt{/chat/completions};
+  \item \texttt{/embeddings}.
+\end{itemize}
+
+Il permet de confirmer que la cle, le modele LLM et le modele embedding sont valides.
+
+\subsection{\texttt{initialize\_databases.py}}
+
+Initialise les tables PostgreSQL via SQLAlchemy:
+
+\begin{lstlisting}[style=smartcode,language=Python]
+Base.metadata.create_all(bind=engine)
+\end{lstlisting}
+
+\subsection{\texttt{free\_port.py}}
+
+Libere un port occupe. Utile si un ancien serveur FastAPI utilise encore \texttt{8002}.
+
+\subsection{\texttt{analyze\_samples.py}}
+
+Script de test complet. Il lit \texttt{samples/fiche\_poste.pdf}, recupere les CV du dossier, appelle l'API FastAPI, sauvegarde le JSON et ouvre le rapport HTML. Il accepte aussi \texttt{--cv-file} et \texttt{--cv-dir} pour tester d'autres fichiers.
+
+\subsection{\texttt{render\_result\_report.py}}
+
+Convertit \texttt{result.json} en rapport HTML lisible. Il affiche:
+
+\begin{itemize}
+  \item le texte extrait;
+  \item la fiche de poste structuree;
+  \item le classement final;
+  \item les scores par categorie;
+  \item les preuves principales;
+  \item les erreurs de traitement.
+\end{itemize}
+
+\section{Dossier \texttt{tests}}
+
+Les tests valident les comportements critiques:
+
+\begin{itemize}
+  \item extraction de fiche de poste;
+  \item nettoyage des responsabilites;
+  \item separation competences obligatoires/souhaitees;
+  \item detection de competences explicites dans le texte brut;
+  \item filtrage des fausses experiences;
+  \item parsing des dates francaises abregees;
+  \item matching des competences;
+  \item matching des responsabilites avec preuves;
+  \item scoring avec redistribution des poids;
+  \item classement et ex aequo;
+  \item test d'integration optionnel avec NVIDIA et PostgreSQL.
+\end{itemize}
+
+\section{Glossaire technique}
+
+\begin{longtable}{|p{4cm}|p{11cm}|}
+\hline
+\textbf{Terme} & \textbf{Explication} \\
+\hline
+FastAPI & Framework Python qui expose les endpoints HTTP du backend. \\
+\hline
+Endpoint & URL API qui execute une action, par exemple \texttt{/api/ranking/analyze}. \\
+\hline
+Pydantic & Bibliotheque de validation. Elle force les donnees a respecter un schema. \\
+\hline
+LLM & Large Language Model. Ici, il structure la fiche et les CV en JSON. \\
+\hline
+Prompt & Instruction envoyee au LLM pour lui imposer une sortie stricte. \\
+\hline
+Embedding & Vecteur numerique representant le sens d'un texte. \\
+\hline
+RAG & Retrieval Augmented Generation: on recupere des passages pertinents avant de scorer/expliquer. \\
+\hline
+Chunk & Morceau de texte extrait d'une section de CV. \\
+\hline
+Vector store & Base ou table permettant de stocker et rechercher des vecteurs. Ici: PostgreSQL via SQLAlchemy. \\
+\hline
+Similarite cosinus & Formule pour mesurer la proximite entre deux vecteurs. \\
+\hline
+Namespace & Identifiant temporaire d'une analyse. Il isole les vecteurs d'un test. \\
+\hline
+Normalisation & Transformation des variantes en formes comparables: accents, casse, synonymes. \\
+\hline
+Matcher & Module qui compare une categorie precise du CV avec la fiche. \\
+\hline
+Scoring & Calcul du score par categorie et du score final. \\
+\hline
+Redistribution des poids & Si un critere n'est pas present dans la fiche, son poids est reparti entre les criteres applicables. \\
+\hline
+Ex aequo & Deux candidats sont affiches au meme rang si leur difference de score est inferieure a la tolerance. \\
+\hline
+\end{longtable}
+
+\section{Comment presenter le projet a l'encadrant}
+
+Pour expliquer le backend, il faut insister sur la separation des responsabilites:
+
+\begin{enumerate}
+  \item \textbf{Extraction de texte}: on lit le document, sans interpretation.
+  \item \textbf{Segmentation}: on organise le texte en sections pour mieux localiser les preuves.
+  \item \textbf{Extraction structuree}: le LLM transforme le texte en JSON selon un schema strict.
+  \item \textbf{Validation}: Pydantic refuse les structures invalides.
+  \item \textbf{Normalisation}: on rend les termes comparables.
+  \item \textbf{RAG}: on vectorise les sections et on recupere les passages pertinents.
+  \item \textbf{Matching}: on compare les criteres du poste avec les preuves du CV.
+  \item \textbf{Scoring}: on calcule un score explicable.
+  \item \textbf{Ranking}: on trie les candidats et on affiche les ex aequo.
+\end{enumerate}
+
+La phrase technique centrale du projet est:
+
+\begin{quote}
+Le systeme ne classe pas les CV uniquement par mots-cles. Il extrait d'abord les criteres de la fiche et les informations du CV, puis il utilise des embeddings pour rechercher les preuves pertinentes avant de calculer un score explicable par categorie.
+\end{quote}
+
+\section{Limites connues et ameliorations futures}
+
+Les limites actuelles ne sont pas des erreurs de conception, mais des points naturels d'amelioration:
+
+\begin{itemize}
+  \item ajouter OCR pour les PDF scannes;
+  \item utiliser une extension vectorielle PostgreSQL comme \texttt{pgvector} si le volume devient tres grand;
+  \item conserver un historique volontaire des analyses si le besoin produit apparait;
+  \item ameliorer les prompts pour certains formats de CV complexes;
+  \item ajouter un endpoint dedie pour visualiser uniquement l'extraction structuree;
+  \item enrichir \texttt{certification\_matcher.py} si les certifications deviennent importantes.
+\end{itemize}
+
+\section{Conclusion}
+
+Le backend SmartRecruit suit une architecture modulaire: chaque dossier a un role precis et la chaine complete est lisible de bout en bout. L'extraction, le RAG, le matching, le scoring et le ranking sont separes, ce qui rend le projet explicable, testable et ameliorable. La base PostgreSQL est utilisee pour stocker temporairement les vecteurs des chunks pendant l'analyse, et les appels LLM/embeddings passent par l'API NVIDIA configuree dans \texttt{.env}. Les resultats sont donc produits par une chaine complete et controlee, avec des erreurs explicites si un composant externe ne fonctionne pas.
+
+\end{document}

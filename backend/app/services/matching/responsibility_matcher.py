@@ -1,3 +1,5 @@
+import re
+
 from app.schemas.cv import StructuredCV
 from app.schemas.job import StructuredJobDescription
 from app.services.normalization.text_normalizer import normalize_text, tokenize
@@ -40,11 +42,11 @@ CONCEPT_GROUPS = {
     },
     "data_processing": {
         "responsibility": {"data", "donnees", "snowflake", "azure", "data lake", "datalake", "disponibilite"},
-        "evidence": {"data", "donnees", "sql", "azure", "traitement", "flux", "millions", "points de donnees"},
+        "evidence": {"data", "donnees", "azure", "snowflake", "data lake", "datalake", "etl", "pipeline", "stockage", "warehouse", "datamart", "flux", "points de donnees"},
     },
     "workflow_management": {
         "responsibility": {"workstream", "project management", "piloter", "lead", "coordination"},
-        "evidence": {"pilotage", "piloter", "plateforme", "coordination", "lead", "management", "projet"},
+        "evidence": {"pilotage", "piloter", "coordination", "lead", "management", "projet", "workstream"},
     },
     "business_needs": {
         "responsibility": {"business needs", "besoins", "metiers", "clarifier", "couverture"},
@@ -62,8 +64,14 @@ def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retr
         return {"applicable": False, "score": 0.0, "matched": [], "missing": [], "details": {}}
     passages = _candidate_passages(cv, retrieved_evidence)
     matched, partial, missing, matched_evidence, partial_evidence, scored = [], [], [], [], [], []
+    optional_responsibilities = []
     for responsibility in job.responsibilities:
         best = _best_passage_match(responsibility, passages)
+        if _is_non_penalizing_responsibility(responsibility):
+            optional_responsibilities.append(
+                {key: best[key] for key in ["responsibility", "score", "status", "evidence"]}
+            )
+            continue
         scored.append({key: best[key] for key in ["responsibility", "score", "status", "evidence"]})
         if best["status"] == "full":
             matched.append(responsibility)
@@ -73,7 +81,20 @@ def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retr
             partial_evidence.append(best["evidence"])
         else:
             missing.append(responsibility)
-    score = sum(item["score"] for item in scored) / len(job.responsibilities)
+    if not scored:
+        return {
+            "applicable": False,
+            "score": 0.0,
+            "matched": [],
+            "missing": [],
+            "details": {
+                "retrieved_evidence_count": len(retrieved_evidence or []),
+                "candidate_passage_count": len(passages),
+                "optional_responsibilities": optional_responsibilities,
+                "responsibility_scores": [],
+            },
+        }
+    score = sum(item["score"] for item in scored) / len(scored)
     return {
         "applicable": True,
         "score": round(score, 2),
@@ -85,6 +106,7 @@ def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retr
             "matched_evidence": matched_evidence[:5],
             "partial": partial,
             "partial_evidence": partial_evidence[:5],
+            "optional_responsibilities": optional_responsibilities,
             "responsibility_scores": scored,
         },
     }
@@ -121,6 +143,8 @@ def _best_passage_match(responsibility: str, passages: list[str]) -> dict:
 
 
 def _passage_match_score(responsibility: str, passage: str) -> tuple[float, str]:
+    if not _passes_responsibility_context_gate(responsibility, passage):
+        return 0.0, "none"
     critical_terms = _terms_in_text(responsibility)
     critical_coverage = _critical_coverage(critical_terms, passage)
     required_concepts = _required_concepts(responsibility)
@@ -145,6 +169,95 @@ def _passage_match_score(responsibility: str, passage: str) -> tuple[float, str]
     if score >= PARTIAL_RESPONSIBILITY_THRESHOLD:
         return score, "partial"
     return 0.0, "none"
+
+
+def _passes_responsibility_context_gate(responsibility: str, passage: str) -> bool:
+    responsibility_normalized = normalize_text(responsibility)
+    passage_normalized = normalize_text(passage)
+    if _is_data_platform_availability_responsibility(responsibility_normalized):
+        return _has_target_data_platform(passage_normalized) and _has_data_availability_context(passage_normalized)
+    if _is_workstream_responsibility(responsibility_normalized):
+        return _has_workflow_signal(passage_normalized) and _has_data_or_bi_signal(passage_normalized)
+    if _is_business_needs_responsibility(responsibility_normalized):
+        return _has_business_needs_signal(passage_normalized)
+    return True
+
+
+def _is_data_platform_availability_responsibility(text: str) -> bool:
+    return (
+        "snowflake" in text
+        or "data lake" in text
+        or "datalake" in text
+        or ("azure" in text and ("donnees" in text or "data" in text or "disponibilite" in text))
+    )
+
+
+def _is_workstream_responsibility(text: str) -> bool:
+    return "workstream" in text or ("bi" in text and "data" in text and any(term in text for term in {"piloter", "lead", "project management"}))
+
+
+def _is_business_needs_responsibility(text: str) -> bool:
+    return any(term in text for term in {"business needs", "besoins metiers", "clarifier", "couverture"})
+
+
+def _is_non_penalizing_responsibility(text: str) -> bool:
+    normalized = normalize_text(text)
+    return (
+        _is_business_needs_responsibility(normalized)
+        or _is_data_platform_availability_responsibility(normalized)
+    )
+
+
+def _has_target_data_platform(text: str) -> bool:
+    if "snowflake" in text or "data lake" in text or "datalake" in text:
+        return True
+    return _has_valid_azure_data_context(text)
+
+
+def _has_valid_azure_data_context(text: str) -> bool:
+    if "azure" not in text:
+        return False
+    for match in re.finditer(r"(?<![a-z0-9+#])azure(?![a-z0-9+#])", text):
+        suffix = text[match.end(): match.end() + 25].strip()
+        if suffix.startswith(("ad", "devops", "dev ops", "ci", "active directory")):
+            continue
+        window = text[max(0, match.start() - 45): match.end() + 70]
+        if _has_data_or_bi_signal(window):
+            return True
+    return False
+
+
+def _has_data_availability_context(text: str) -> bool:
+    return any(
+        term in text
+        for term in {
+            "data",
+            "donnees",
+            "datalake",
+            "data lake",
+            "etl",
+            "pipeline",
+            "flux",
+            "stockage",
+            "warehouse",
+            "datamart",
+            "disponibilite",
+            "available",
+            "availability",
+        }
+    )
+
+
+def _has_workflow_signal(text: str) -> bool:
+    return any(term in text for term in {"pilotage", "piloter", "lead", "coordination", "management", "projet", "workstream"})
+
+
+def _has_data_or_bi_signal(text: str) -> bool:
+    return any(term in text for term in {"data", "donnees", "bi", "reporting", "dashboard", "dashbord", "tableau de bord", "kpi", "sql", "etl", "warehouse", "datamart"})
+
+
+def _has_business_needs_signal(text: str) -> bool:
+    return any(term in text for term in {"besoin", "besoins", "metier", "metiers", "requirements", "fonctionnel", "specification", "specifications", "cahier", "clarifier"})
 
 
 def _critical_coverage(terms: list[str], text: str) -> float:

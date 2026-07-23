@@ -35,7 +35,6 @@ class Education(BaseModel):
 
 class Language(BaseModel):
     language: str
-    level: str | None = None
     normalized_level: str | None = None
     confidence: float = 1.0
     estimated: bool = False

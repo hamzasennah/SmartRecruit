@@ -1,8 +1,8 @@
 # SmartRecruit
 
-Backend FastAPI pour analyser une fiche de poste et classer des CV avec une approche RAG explicable.
+Application FastAPI + React pour analyser une fiche de poste et classer des CV avec une approche RAG explicable.
 
-Le projet contient uniquement le backend pour le moment.
+Le projet contient un backend FastAPI et un frontend React/Vite.
 
 ## Idee du projet
 
@@ -18,6 +18,7 @@ Le backend ne donne pas un score directement a partir du nom du fichier ou d'une
 - decoupage des sections de CV en chunks ;
 - transformation des chunks en embeddings NVIDIA ;
 - stockage des chunks vectorises dans PostgreSQL avec SQLAlchemy ;
+- historisation structuree des CV, fiches de poste et analyses dans PostgreSQL ;
 - recherche semantique des preuves les plus proches de la fiche de poste ;
 - scoring explicable par categories avec redistribution des poids sur les criteres presents ;
 - classement final avec rang, score, forces, faiblesses et preuves.
@@ -40,6 +41,8 @@ flowchart TD
     J --> K["Modele embedding NVIDIA"]
     K --> L["Vecteurs des chunks CV"]
     L --> M["PostgreSQL<br/>table vector_chunks"]
+    G --> DB1["PostgreSQL<br/>table jobs"]
+    H --> DB2["PostgreSQL<br/>table resumes"]
 
     G --> N["Construction de la requete semantique<br/>criteres du poste"]
     N --> O["Modele embedding NVIDIA"]
@@ -55,6 +58,8 @@ flowchart TD
     R --> S
 
     S --> T["Classement final<br/>scores, forces, faiblesses, preuves"]
+    T --> DB3["PostgreSQL<br/>table analyses"]
+    T --> U["Frontend React<br/>progression et resultats detailles"]
 ```
 
 Le schema montre que le backend suit deux chemins complementaires apres l'extraction du texte. D'un cote, le texte brut de la fiche de poste et des CV est envoye au LLM NVIDIA pour etre transforme en JSON structure. De l'autre cote, le texte brut des CV est segmente puis decoupe en chunks, qui sont envoyes au modele d'embedding NVIDIA pour etre transformes en vecteurs et stockes temporairement dans PostgreSQL. Ensuite, les criteres extraits de la fiche de poste sont aussi vectorises afin de rechercher les passages de CV les plus proches semantiquement. Le scoring utilise enfin le JSON structure et les preuves RAG pour produire le classement final.
@@ -68,7 +73,7 @@ backend/
   app/
     api/routes/              Endpoints FastAPI
     config.py                Configuration .env
-    database/                Base SQLAlchemy et table vector_chunks
+    database/                Base SQLAlchemy: resumes, jobs, analyses, vector_chunks
     infrastructure/          Clients NVIDIA API et stockage vectoriel PostgreSQL
     schemas/                 Modeles Pydantic
     services/
@@ -86,11 +91,17 @@ backend/
     free_port.py             Liberation d'un port local
     initialize_databases.py  Creation des tables PostgreSQL
     run_backend.sh           Lancement FastAPI
+
+frontend/
+  src/App.tsx                 Interface upload, progression et resultats
+  src/styles.css              Mise en page et design responsive
+  package.json                Scripts Vite
 ```
 
 ## Prerequis
 
 - Python 3.11 ou plus ;
+- Node.js 18 ou plus pour le frontend ;
 - PostgreSQL accessible localement ou via Docker Compose ;
 - cle API NVIDIA ;
 - modele LLM : `meta/llama-3.1-8b-instruct` ;
@@ -145,6 +156,16 @@ python -m uvicorn app.main:app \
 
 API : `http://127.0.0.1:8002`
 Swagger : `http://127.0.0.1:8002/docs`
+
+Terminal 3 - Frontend React :
+
+```bash
+cd ~/SmartRecruit/frontend
+npm install
+npm run dev
+```
+
+Interface : `http://127.0.0.1:5173`
 
 ## Verification NVIDIA API
 

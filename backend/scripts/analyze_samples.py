@@ -102,7 +102,7 @@ def _resolve_cv_paths(cv_files: list[str] | None, cv_dirs: list[str] | None, job
             raise NotADirectoryError(f"Dossier CV invalide: {directory}")
         paths.extend(sorted(directory.glob("*.pdf")))
     if not paths:
-        paths = [_existing_path("samples/cv1.pdf"), _existing_path("samples/cv2.pdf")]
+        paths = sorted((BACKEND_ROOT / "samples").glob("*.pdf"))
     job_resolved = job_path.resolve()
     seen: set[Path] = set()
     unique_paths: list[Path] = []

@@ -1,7 +1,8 @@
-from app.schemas.cv import Experience, SkillSet, StructuredCV
-from app.schemas.job import ExperienceRequirement, RequiredSkills, StructuredJobDescription
+from app.schemas.cv import Experience, Language, SkillSet, StructuredCV
+from app.schemas.job import ExperienceRequirement, LanguageRequirement, RequiredSkills, StructuredJobDescription
 from app.services.experience.duration_calculator import enrich_experience_durations
 from app.services.matching.experience_matcher import match_experience
+from app.services.matching.language_matcher import match_languages
 from app.services.matching.responsibility_matcher import match_responsibilities
 from app.services.scoring.scoring_engine import ScoringEngine
 
@@ -36,8 +37,8 @@ def test_absent_criteria_are_ignored_and_weights_are_redistributed() -> None:
 
     assert [category.name for category in match.category_scores] == ["technical_skills"]
     assert match.category_scores[0].weight == 1.0
-    assert match.category_scores[0].score == 60.0
-    assert match.final_score == 60.0
+    assert match.category_scores[0].score == 50.0
+    assert match.final_score == 50.0
     assert match.category_scores[0].details["missing_mandatory"] == ["sql"]
     assert match.category_scores[0].details["missing_preferred"] == []
 
@@ -60,8 +61,8 @@ def test_skill_missing_lists_keep_mandatory_and_preferred_separated() -> None:
     assert technical.missing == ["power bi", "excel"]
     assert technical.details["missing_mandatory"] == ["power bi", "excel"]
     assert technical.details["missing_preferred"] == ["foundry", "spm"]
-    assert technical.details["mandatory_weight"] == 0.8
-    assert technical.details["preferred_weight"] == 0.2
+    assert technical.details["mandatory_weight"] == 1.0
+    assert technical.details["preferred_bonus_weight"] == 0.1
 
 
 def test_irrelevant_experience_is_not_counted_as_relevant_months() -> None:
@@ -134,10 +135,11 @@ def test_responsibilities_require_specific_cv_evidence_not_single_keyword_overla
         ],
     )
 
-    assert 0.0 < result["score"] < 30.0
+    assert result["score"] == 0.0
     assert result["matched"] == []
     assert "Data available in datalake Snowflake + Azure" not in result["missing"]
-    assert result["details"]["partial"] == ["Data available in datalake Snowflake + Azure"]
+    assert result["details"]["optional_responsibilities"][0]["responsibility"] == "Data available in datalake Snowflake + Azure"
+    assert result["details"]["optional_responsibilities"][0]["status"] == "partial"
 
 
 def test_responsibilities_give_partial_credit_for_reporting_and_visualisation() -> None:
@@ -167,7 +169,170 @@ def test_responsibilities_give_partial_credit_for_reporting_and_visualisation() 
     assert 20.0 <= result["score"] < 70.0
     assert result["matched"] == []
     assert "Creer et ameliorer les tableaux de bord et KPI." in result["details"]["partial"]
-    assert "Clarifier les besoins metiers et assurer leur couverture." in result["missing"]
+    assert "Clarifier les besoins metiers et assurer leur couverture." not in result["missing"]
+    assert result["details"]["optional_responsibilities"][0]["responsibility"] == (
+        "Clarifier les besoins metiers et assurer leur couverture."
+    )
+
+
+def test_business_needs_responsibility_is_not_a_hard_penalty_when_unproven() -> None:
+    cv = StructuredCV(
+        candidate_name="Candidat",
+        experiences=[
+            Experience(
+                job_title="Developpeur",
+                missions=["Developpement d'une application web React."],
+            )
+        ],
+    )
+    job = StructuredJobDescription(
+        responsibilities=["Clarifier les besoins metiers et assurer leur couverture."],
+    )
+
+    result = match_responsibilities(cv, job, retrieved_evidence=[])
+
+    assert result["applicable"] is False
+    assert result["missing"] == []
+    assert result["details"]["optional_responsibilities"][0]["responsibility"] == (
+        "Clarifier les besoins metiers et assurer leur couverture."
+    )
+
+
+def test_soft_skills_are_informative_and_do_not_penalize_scoring() -> None:
+    cv = StructuredCV(
+        candidate_name="Candidat Python",
+        skills=SkillSet(technical=["python"]),
+    )
+    job = StructuredJobDescription(
+        required_skills=RequiredSkills(
+            mandatory=["python"],
+            soft=["leadership", "autonomy", "self driven"],
+        ),
+    )
+
+    match = ScoringEngine().score_candidate("cv.txt", cv, job, [])
+
+    assert [category.name for category in match.category_scores] == ["technical_skills"]
+    assert match.final_score == 100.0
+    assert not any("Soft skills" in weakness for weakness in match.weaknesses)
+
+
+def test_language_matching_uses_presence_and_normalized_level() -> None:
+    cv = StructuredCV(
+        languages=[
+            Language(language="francais", normalized_level="courant"),
+            Language(language="anglais", normalized_level="professional"),
+        ],
+    )
+    job = StructuredJobDescription(
+        language_requirements=[
+            LanguageRequirement(language="French", minimum_level=None),
+            LanguageRequirement(language="English", minimum_level="professional"),
+        ],
+    )
+
+    result = match_languages(cv, job)
+
+    assert result["matched"] == ["francais", "anglais"]
+    assert result["missing"] == []
+    assert result["score"] == 100.0
+
+
+def test_language_matching_does_not_mark_present_language_missing_when_level_is_lower() -> None:
+    cv = StructuredCV(
+        languages=[
+            Language(language="francais", normalized_level="professional"),
+            Language(language="anglais", normalized_level="professional"),
+        ],
+    )
+    job = StructuredJobDescription(
+        language_requirements=[
+            LanguageRequirement(language="French", minimum_level="fluent"),
+            LanguageRequirement(language="English", minimum_level="fluent"),
+        ],
+    )
+
+    result = match_languages(cv, job)
+
+    assert result["matched"] == ["francais", "anglais"]
+    assert result["missing"] == []
+    assert result["score"] == 100.0
+    assert result["details"]["below_required_level"] == [
+        {"language": "francais", "candidate_rank": 4, "required_rank": 5},
+        {"language": "anglais", "candidate_rank": 4, "required_rank": 5},
+    ]
+
+
+def test_snowflake_azure_responsibility_rejects_generic_backend_database_evidence() -> None:
+    cv = StructuredCV(
+        candidate_name="Backend",
+        experiences=[
+            Experience(
+                job_title="Developpeur Backend",
+                missions=[
+                    "Utilisation de Sequelize ORM pour l'interaction avec les bases de donnees MySQL et PostgreSQL dans le developpement back-end.",
+                    "Deploiement avec Azure DevOps et pipelines CI/CD.",
+                ],
+            )
+        ],
+    )
+    job = StructuredJobDescription(
+        responsibilities=["Garantir la disponibilite des donnees dans Snowflake/Azure."],
+    )
+
+    result = match_responsibilities(cv, job, retrieved_evidence=[])
+
+    assert result["applicable"] is False
+    assert result["matched"] == []
+    assert result["missing"] == []
+    assert result["details"]["optional_responsibilities"][0]["status"] == "none"
+
+
+def test_snowflake_azure_responsibility_accepts_only_data_platform_context() -> None:
+    cv = StructuredCV(
+        candidate_name="Data",
+        experiences=[
+            Experience(
+                job_title="Data Analyst",
+                missions=[
+                    "Mise en place de pipelines ETL et flux de donnees sur Azure pour alimenter un data warehouse.",
+                ],
+            )
+        ],
+    )
+    job = StructuredJobDescription(
+        responsibilities=["Garantir la disponibilite des donnees dans Snowflake/Azure."],
+    )
+
+    result = match_responsibilities(cv, job, retrieved_evidence=[])
+
+    assert result["applicable"] is False
+    assert result["matched"] == []
+    assert result["missing"] == []
+    assert result["details"]["optional_responsibilities"][0]["status"] == "partial"
+
+
+def test_snowflake_azure_responsibility_ignores_azure_devops_but_accepts_later_data_azure() -> None:
+    cv = StructuredCV(
+        candidate_name="Data",
+        experiences=[
+            Experience(
+                job_title="Data Engineer",
+                missions=[
+                    "CI/CD avec Azure DevOps. Pipelines ETL de donnees sur Azure pour alimenter le data warehouse.",
+                ],
+            )
+        ],
+    )
+    job = StructuredJobDescription(
+        responsibilities=["Garantir la disponibilite des donnees dans Snowflake/Azure."],
+    )
+
+    result = match_responsibilities(cv, job, retrieved_evidence=[])
+
+    assert result["applicable"] is False
+    assert result["missing"] == []
+    assert result["details"]["optional_responsibilities"][0]["status"] == "partial"
 
 
 def test_responsibilities_ignore_language_sections_and_low_retrieval_scores() -> None:

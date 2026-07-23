@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -9,6 +10,7 @@ from app.dependencies import get_batch_ranking_pipeline
 from app.schemas.ranking import RankingResponse
 
 router = APIRouter(prefix="/ranking", tags=["ranking"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/analyze", response_model=RankingResponse)
@@ -21,6 +23,9 @@ async def analyze_ranking(job_file: UploadFile = File(...), cv_files: list[Uploa
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except SmartRecruitError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Erreur inattendue pendant l'analyse du classement.")
+        raise HTTPException(status_code=500, detail=f"Erreur interne pendant l'analyse: {exc}") from exc
 
 
 async def _save_upload(file: UploadFile, prefix: str) -> Path:

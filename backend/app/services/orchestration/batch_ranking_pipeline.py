@@ -1,8 +1,10 @@
+from hashlib import sha256
 from pathlib import Path
 from uuid import uuid4
 
 from app.core.exceptions import ExternalServiceError
 from app.schemas.ranking import RankingResponse
+from app.services.extraction.cv_extractor import enrich_cv_with_job_skill_evidence
 from app.services.orchestration.analyze_cv_pipeline import AnalyzeCVPipeline
 from app.services.orchestration.analyze_job_pipeline import AnalyzeJobPipeline
 from app.services.ranking.ranking_engine import RankingEngine
@@ -24,17 +26,87 @@ class BatchRankingPipeline:
     def run(self, job_path, cv_paths, top_k: int = 5) -> RankingResponse:
         namespace = f"analysis_{uuid4().hex}"
         self._vector_store.reset_namespace(namespace)
-        job = self._job_pipeline.run(job_path)
-        matches, errors = [], []
-        query = " ".join([job.job_title or "", " ".join(job.required_skills.mandatory), " ".join(job.required_skills.preferred), " ".join(job.responsibilities)])
-        for cv_path in cv_paths:
-            try:
-                document, cv = self._cv_pipeline.run(cv_path)
-                self._indexer.index_sections(namespace, document.filename, document.sections)
-                evidence = self._retriever.retrieve(namespace, query, top_k=top_k, filters={"document_id": document.filename})
-                matches.append((self._scoring.score_candidate(document.filename, cv, job, evidence), cv))
-            except ExternalServiceError:
-                raise
-            except Exception as exc:
-                errors.append(f"{Path(cv_path).name}: {exc}")
-        return RankingResponse(job=job, total_candidates=len(matches), ranking=self._ranking.rank(matches), errors=errors)
+        try:
+            job = self._job_pipeline.run(job_path)
+            job_id = _create_job_record(self._vector_store, job_path, job)
+            matches, errors = [], []
+            query = " ".join(
+                [
+                    job.job_title or "",
+                    " ".join(job.required_skills.mandatory),
+                    " ".join(job.required_skills.preferred),
+                    " ".join(job.responsibilities),
+                ]
+            )
+            for cv_path in cv_paths:
+                try:
+                    document, cv = self._cv_pipeline.run(cv_path)
+                    enrich_cv_with_job_skill_evidence(cv, document.text, job)
+                    _create_resume_record(self._vector_store, cv_path, document, cv)
+                    self._indexer.index_sections(namespace, document.filename, document.sections)
+                    evidence = self._retriever.retrieve(
+                        namespace,
+                        query,
+                        top_k=top_k,
+                        filters={"document_id": document.filename},
+                    )
+                    matches.append((self._scoring.score_candidate(document.filename, cv, job, evidence), cv))
+                except ExternalServiceError:
+                    raise
+                except Exception as exc:
+                    errors.append(f"{Path(cv_path).name}: {exc}")
+            response = RankingResponse(
+                job=job,
+                total_candidates=len(matches),
+                ranking=self._ranking.rank(matches),
+                errors=errors,
+            )
+            _create_analysis_record(self._vector_store, namespace, job_id, response)
+            return response
+        finally:
+            self._vector_store.reset_namespace(namespace)
+
+
+def _create_job_record(vector_store, path, job) -> str | None:
+    if not hasattr(vector_store, "create_job_record"):
+        return None
+    return vector_store.create_job_record(
+        filename=Path(path).name,
+        content_hash=_file_hash(path),
+        job_title=job.job_title,
+        text_preview=job.raw_text_preview,
+    )
+
+
+def _create_resume_record(vector_store, path, document, cv) -> str | None:
+    if not hasattr(vector_store, "create_resume_record"):
+        return None
+    return vector_store.create_resume_record(
+        filename=document.filename or Path(path).name,
+        content_hash=_file_hash(path),
+        candidate_name=cv.candidate_name,
+        text_preview=document.text,
+    )
+
+
+def _create_analysis_record(vector_store, namespace: str, job_id: str | None, response: RankingResponse) -> str | None:
+    if not hasattr(vector_store, "create_analysis_record"):
+        return None
+    return vector_store.create_analysis_record(
+        namespace=namespace,
+        job_id=job_id,
+        total_candidates=response.total_candidates,
+        summary=_analysis_summary(response),
+        result=response.model_dump(mode="json"),
+    )
+
+
+def _file_hash(path) -> str:
+    return sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _analysis_summary(response: RankingResponse) -> str:
+    if not response.ranking:
+        return "Aucun candidat classe."
+    best = response.ranking[0].candidate
+    return f"{response.total_candidates} candidat(s) analyses. Meilleur score: {best.candidate_name} ({best.final_score:.2f}%)."

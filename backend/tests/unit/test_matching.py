@@ -11,3 +11,16 @@ def test_skill_matching_uses_aliases() -> None:
     assert "python" in result["matched"]
     assert "power bi" in result["matched"]
 
+
+def test_skill_matching_does_not_count_azure_ad_as_azure_platform_evidence() -> None:
+    cv = StructuredCV(skills=SkillSet(tools=["Azure AD"]))
+    job = StructuredJobDescription(required_skills=RequiredSkills(mandatory=["Azure"], preferred=["Snowflake"]))
+
+    result = match_skills(cv, job)
+
+    assert "azure" not in result["details"]["matched_mandatory"]
+    assert "azure" in result["details"]["missing_mandatory"]
+    assert result["details"]["partial_mandatory"] == []
+    assert "azure (partiel: azure ad)" not in result["matched"]
+    assert result["score"] == 0.0
+
