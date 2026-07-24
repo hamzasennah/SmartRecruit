@@ -13,32 +13,40 @@ def match_languages(cv: StructuredCV, job: StructuredJobDescription) -> dict:
             continue
         candidate[lang] = max(candidate.get(lang, 0), language_rank(language.normalized_level))
     matched, missing, below_required_level = [], [], []
+    credits: list[float] = []
     required_levels: dict[str, int] = {}
     for req in job.language_requirements:
         lang = normalize_language(req.language)
         if lang not in candidate:
             missing.append(lang)
+            credits.append(0.0)
             continue
         required_rank = language_rank(req.minimum_level)
         required_levels[lang] = required_rank
         matched.append(lang)
-        if required_rank > 0 and 0 < candidate[lang] < required_rank:
+        candidate_rank = candidate[lang]
+        if required_rank <= 0:
+            credits.append(1.0)
+        else:
+            credits.append(min(candidate_rank / required_rank, 1.0) if candidate_rank > 0 else 0.0)
+        if required_rank > 0 and candidate_rank < required_rank:
             below_required_level.append(
                 {
                     "language": lang,
-                    "candidate_rank": candidate[lang],
+                    "candidate_rank": candidate_rank,
                     "required_rank": required_rank,
                 }
             )
     return {
         "applicable": True,
-        "score": round(len(matched) / len(job.language_requirements) * 100, 2),
+        "score": round((sum(credits) / len(job.language_requirements)) * 100, 2),
         "matched": matched,
         "missing": missing,
         "details": {
             "candidate_levels": candidate,
             "required_levels": required_levels,
             "below_required_level": below_required_level,
-            "scoring_rule": "presence_based",
+            "language_credits": credits,
+            "scoring_rule": "level_weighted",
         },
     }

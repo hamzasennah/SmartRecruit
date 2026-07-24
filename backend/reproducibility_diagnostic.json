@@ -1,0 +1,218 @@
+{
+  "runs": [
+    {
+      "run": 1,
+      "stage_hashes": {
+        "job_structured": "22d9ecd4f8a8c1b1d685cf353615d08e139978cde1a36722cd8c4754132b9f43",
+        "candidates": [
+          {
+            "filename": "cv_data_analyst.txt",
+            "text_hash": "97e368071f8db63ab08cace8d4abb1147aed48f684b558a56e231cc34864a732",
+            "sections_hash": "5efefb1e2744c134be3ca1f8ff9cdf5133ad9c86e478bcaadb04390158a26026",
+            "structured_cv_hash": "e2c65c1e3b2c54c14964e18d9a714c62779727795bb554c8b46901b43ceddac0",
+            "chunks_hash": "c963e42070abf2bc7e116c15aa4bd040d328a5455d649dc418fbc4fd8de267cf",
+            "evidence_hash": "a64e5941881e6c0a55318b09580ad8577a4be87c1ac438c4c151491d53071486",
+            "score": 92.53
+          },
+          {
+            "filename": "cv_generalist.txt",
+            "text_hash": "0102bed4699e2c4345f01e330e5fdac7cd8d72e670ed634eda61255e23057580",
+            "sections_hash": "12fe65522b741161d004f3b6188e504b84ce83c5b4ee42276685aef5544b36cb",
+            "structured_cv_hash": "5d492e678e698f44ff1d7eb8987f5f807ef17db08f986083b297a7a2c9b6020a",
+            "chunks_hash": "bdd5e3f6b863c60879d803c109f26e41d461871e91e8bea71cd5ab92476901c3",
+            "evidence_hash": "36aeb70283e248aa8a95161699783079b9a2df3d4c5e926858b2ae933bebddfa",
+            "score": 0.0
+          }
+        ]
+      },
+      "scores": [
+        {
+          "rank": 1,
+          "filename": "cv_data_analyst.txt",
+          "candidate_name": "Hamza Data Analyst",
+          "final_score": 92.53
+        },
+        {
+          "rank": 2,
+          "filename": "cv_generalist.txt",
+          "candidate_name": "Profil Generaliste",
+          "final_score": 0.0
+        }
+      ],
+      "final_hash": "dd3462ff31987651ca916306a97dd1a83bfc8bf178b28e6fcafbc9129009a197"
+    },
+    {
+      "run": 2,
+      "stage_hashes": {
+        "job_structured": "22d9ecd4f8a8c1b1d685cf353615d08e139978cde1a36722cd8c4754132b9f43",
+        "candidates": [
+          {
+            "filename": "cv_data_analyst.txt",
+            "text_hash": "97e368071f8db63ab08cace8d4abb1147aed48f684b558a56e231cc34864a732",
+            "sections_hash": "5efefb1e2744c134be3ca1f8ff9cdf5133ad9c86e478bcaadb04390158a26026",
+            "structured_cv_hash": "e2c65c1e3b2c54c14964e18d9a714c62779727795bb554c8b46901b43ceddac0",
+            "chunks_hash": "c963e42070abf2bc7e116c15aa4bd040d328a5455d649dc418fbc4fd8de267cf",
+            "evidence_hash": "a64e5941881e6c0a55318b09580ad8577a4be87c1ac438c4c151491d53071486",
+            "score": 92.53
+          },
+          {
+            "filename": "cv_generalist.txt",
+            "text_hash": "0102bed4699e2c4345f01e330e5fdac7cd8d72e670ed634eda61255e23057580",
+            "sections_hash": "12fe65522b741161d004f3b6188e504b84ce83c5b4ee42276685aef5544b36cb",
+            "structured_cv_hash": "5d492e678e698f44ff1d7eb8987f5f807ef17db08f986083b297a7a2c9b6020a",
+            "chunks_hash": "bdd5e3f6b863c60879d803c109f26e41d461871e91e8bea71cd5ab92476901c3",
+            "evidence_hash": "36aeb70283e248aa8a95161699783079b9a2df3d4c5e926858b2ae933bebddfa",
+            "score": 0.0
+          }
+        ]
+      },
+      "scores": [
+        {
+          "rank": 1,
+          "filename": "cv_data_analyst.txt",
+          "candidate_name": "Hamza Data Analyst",
+          "final_score": 92.53
+        },
+        {
+          "rank": 2,
+          "filename": "cv_generalist.txt",
+          "candidate_name": "Profil Generaliste",
+          "final_score": 0.0
+        }
+      ],
+      "final_hash": "dd3462ff31987651ca916306a97dd1a83bfc8bf178b28e6fcafbc9129009a197"
+    },
+    {
+      "run": 3,
+      "stage_hashes": {
+        "job_structured": "22d9ecd4f8a8c1b1d685cf353615d08e139978cde1a36722cd8c4754132b9f43",
+        "candidates": [
+          {
+            "filename": "cv_data_analyst.txt",
+            "text_hash": "97e368071f8db63ab08cace8d4abb1147aed48f684b558a56e231cc34864a732",
+            "sections_hash": "5efefb1e2744c134be3ca1f8ff9cdf5133ad9c86e478bcaadb04390158a26026",
+            "structured_cv_hash": "e2c65c1e3b2c54c14964e18d9a714c62779727795bb554c8b46901b43ceddac0",
+            "chunks_hash": "c963e42070abf2bc7e116c15aa4bd040d328a5455d649dc418fbc4fd8de267cf",
+            "evidence_hash": "a64e5941881e6c0a55318b09580ad8577a4be87c1ac438c4c151491d53071486",
+            "score": 92.53
+          },
+          {
+            "filename": "cv_generalist.txt",
+            "text_hash": "0102bed4699e2c4345f01e330e5fdac7cd8d72e670ed634eda61255e23057580",
+            "sections_hash": "12fe65522b741161d004f3b6188e504b84ce83c5b4ee42276685aef5544b36cb",
+            "structured_cv_hash": "5d492e678e698f44ff1d7eb8987f5f807ef17db08f986083b297a7a2c9b6020a",
+            "chunks_hash": "bdd5e3f6b863c60879d803c109f26e41d461871e91e8bea71cd5ab92476901c3",
+            "evidence_hash": "36aeb70283e248aa8a95161699783079b9a2df3d4c5e926858b2ae933bebddfa",
+            "score": 0.0
+          }
+        ]
+      },
+      "scores": [
+        {
+          "rank": 1,
+          "filename": "cv_data_analyst.txt",
+          "candidate_name": "Hamza Data Analyst",
+          "final_score": 92.53
+        },
+        {
+          "rank": 2,
+          "filename": "cv_generalist.txt",
+          "candidate_name": "Profil Generaliste",
+          "final_score": 0.0
+        }
+      ],
+      "final_hash": "dd3462ff31987651ca916306a97dd1a83bfc8bf178b28e6fcafbc9129009a197"
+    },
+    {
+      "run": 4,
+      "stage_hashes": {
+        "job_structured": "22d9ecd4f8a8c1b1d685cf353615d08e139978cde1a36722cd8c4754132b9f43",
+        "candidates": [
+          {
+            "filename": "cv_data_analyst.txt",
+            "text_hash": "97e368071f8db63ab08cace8d4abb1147aed48f684b558a56e231cc34864a732",
+            "sections_hash": "5efefb1e2744c134be3ca1f8ff9cdf5133ad9c86e478bcaadb04390158a26026",
+            "structured_cv_hash": "e2c65c1e3b2c54c14964e18d9a714c62779727795bb554c8b46901b43ceddac0",
+            "chunks_hash": "c963e42070abf2bc7e116c15aa4bd040d328a5455d649dc418fbc4fd8de267cf",
+            "evidence_hash": "a64e5941881e6c0a55318b09580ad8577a4be87c1ac438c4c151491d53071486",
+            "score": 92.53
+          },
+          {
+            "filename": "cv_generalist.txt",
+            "text_hash": "0102bed4699e2c4345f01e330e5fdac7cd8d72e670ed634eda61255e23057580",
+            "sections_hash": "12fe65522b741161d004f3b6188e504b84ce83c5b4ee42276685aef5544b36cb",
+            "structured_cv_hash": "5d492e678e698f44ff1d7eb8987f5f807ef17db08f986083b297a7a2c9b6020a",
+            "chunks_hash": "bdd5e3f6b863c60879d803c109f26e41d461871e91e8bea71cd5ab92476901c3",
+            "evidence_hash": "36aeb70283e248aa8a95161699783079b9a2df3d4c5e926858b2ae933bebddfa",
+            "score": 0.0
+          }
+        ]
+      },
+      "scores": [
+        {
+          "rank": 1,
+          "filename": "cv_data_analyst.txt",
+          "candidate_name": "Hamza Data Analyst",
+          "final_score": 92.53
+        },
+        {
+          "rank": 2,
+          "filename": "cv_generalist.txt",
+          "candidate_name": "Profil Generaliste",
+          "final_score": 0.0
+        }
+      ],
+      "final_hash": "dd3462ff31987651ca916306a97dd1a83bfc8bf178b28e6fcafbc9129009a197"
+    },
+    {
+      "run": 5,
+      "stage_hashes": {
+        "job_structured": "22d9ecd4f8a8c1b1d685cf353615d08e139978cde1a36722cd8c4754132b9f43",
+        "candidates": [
+          {
+            "filename": "cv_data_analyst.txt",
+            "text_hash": "97e368071f8db63ab08cace8d4abb1147aed48f684b558a56e231cc34864a732",
+            "sections_hash": "5efefb1e2744c134be3ca1f8ff9cdf5133ad9c86e478bcaadb04390158a26026",
+            "structured_cv_hash": "e2c65c1e3b2c54c14964e18d9a714c62779727795bb554c8b46901b43ceddac0",
+            "chunks_hash": "c963e42070abf2bc7e116c15aa4bd040d328a5455d649dc418fbc4fd8de267cf",
+            "evidence_hash": "a64e5941881e6c0a55318b09580ad8577a4be87c1ac438c4c151491d53071486",
+            "score": 92.53
+          },
+          {
+            "filename": "cv_generalist.txt",
+            "text_hash": "0102bed4699e2c4345f01e330e5fdac7cd8d72e670ed634eda61255e23057580",
+            "sections_hash": "12fe65522b741161d004f3b6188e504b84ce83c5b4ee42276685aef5544b36cb",
+            "structured_cv_hash": "5d492e678e698f44ff1d7eb8987f5f807ef17db08f986083b297a7a2c9b6020a",
+            "chunks_hash": "bdd5e3f6b863c60879d803c109f26e41d461871e91e8bea71cd5ab92476901c3",
+            "evidence_hash": "36aeb70283e248aa8a95161699783079b9a2df3d4c5e926858b2ae933bebddfa",
+            "score": 0.0
+          }
+        ]
+      },
+      "scores": [
+        {
+          "rank": 1,
+          "filename": "cv_data_analyst.txt",
+          "candidate_name": "Hamza Data Analyst",
+          "final_score": 92.53
+        },
+        {
+          "rank": 2,
+          "filename": "cv_generalist.txt",
+          "candidate_name": "Profil Generaliste",
+          "final_score": 0.0
+        }
+      ],
+      "final_hash": "dd3462ff31987651ca916306a97dd1a83bfc8bf178b28e6fcafbc9129009a197"
+    }
+  ],
+  "all_final_hashes_identical": true,
+  "all_scores_identical": true,
+  "llm_parameters": {
+    "model": "meta/llama-3.1-8b-instruct",
+    "temperature": 0.0,
+    "seed": 0,
+    "max_tokens": 8192,
+    "offline": true
+  }
+}

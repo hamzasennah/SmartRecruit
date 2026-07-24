@@ -10,7 +10,6 @@ import httpx
 from app.config import Settings
 from app.core.exceptions import ExternalServiceError
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -34,9 +33,6 @@ class NvidiaEmbeddingClient:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.dimensions = dimensions
-
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        return self.embed_passages(texts)
 
     def embed_passages(self, texts: list[str]) -> list[list[float]]:
         return self._embed(texts, input_type="passage")

@@ -15,9 +15,10 @@ Le backend ne donne pas un score directement a partir du nom du fichier ou d'une
 - extraction de texte depuis PDF, DOCX, TXT et MD ;
 - structuration de la fiche de poste et des CV par un modele NVIDIA appele via API ;
 - normalisation des competences, diplomes, langues et intitules ;
+- application de regles metier versionnees dans `backend/app/data/domain_rules.json` ;
 - decoupage des sections de CV en chunks ;
 - transformation des chunks en embeddings NVIDIA ;
-- stockage des chunks vectorises dans PostgreSQL avec SQLAlchemy ;
+- stockage des chunks vectorises dans PostgreSQL/pgvector avec SQLAlchemy ;
 - historisation structuree des CV, fiches de poste et analyses dans PostgreSQL ;
 - recherche semantique des preuves les plus proches de la fiche de poste ;
 - scoring explicable par categories avec redistribution des poids sur les criteres presents ;
@@ -73,8 +74,9 @@ backend/
   app/
     api/routes/              Endpoints FastAPI
     config.py                Configuration .env
+    data/domain_rules.json   Regles metier versionnees pour extraction et matching
     database/                Base SQLAlchemy: resumes, jobs, analyses, vector_chunks
-    infrastructure/          Clients NVIDIA API et stockage vectoriel PostgreSQL
+    infrastructure/          Clients NVIDIA API et stockage vectoriel PostgreSQL/pgvector
     schemas/                 Modeles Pydantic
     services/
       documents/             Lecture PDF/DOCX/TXT/MD et segmentation
@@ -88,8 +90,8 @@ backend/
   scripts/
     check_nvidia_api.py      Test reel NVIDIA API
     analyze_samples.py       Analyse les PDF de SAMPLES et ouvre le rapport HTML
-    free_port.py             Liberation d'un port local
-    initialize_databases.py  Creation des tables PostgreSQL
+    free_port.py             Liberation controlee d'un port local
+    initialize_databases.py  Application des migrations Alembic
     run_backend.sh           Lancement FastAPI
 
 frontend/
@@ -102,14 +104,14 @@ frontend/
 
 - Python 3.11 ou plus ;
 - Node.js 18 ou plus pour le frontend ;
-- PostgreSQL accessible localement ou via Docker Compose ;
+- PostgreSQL avec pgvector accessible localement ou via Docker Compose ;
 - cle API NVIDIA ;
 - modele LLM : `meta/llama-3.1-8b-instruct` ;
 - modele embeddings : `nvidia/llama-nemotron-embed-1b-v2`.
 
 ## Configuration
 
-Ne jamais versionner la vraie cle API. Elle doit rester dans `.env`.
+Ne jamais versionner les vraies cles. Elles doivent rester dans `backend/.env` et, pour Vite, dans `frontend/.env.local`.
 
 Exemple `.env` :
 
@@ -123,13 +125,32 @@ NVIDIA_TIMEOUT=120
 NVIDIA_MAX_RETRIES=2
 NVIDIA_RETRY_DELAY=2
 NVIDIA_MAX_TOKENS=8192
-NVIDIA_TEMPERATURE=0.1
+NVIDIA_TEMPERATURE=0
+NVIDIA_SEED=0
 NVIDIA_EMBEDDING_DIMENSIONS=
-DATABASE_URL=postgresql+psycopg://smartrecruit:smartrecruit@localhost:5432/smartrecruit
+DATABASE_URL=postgresql+psycopg://smartrecruit:change_me@localhost:5432/smartrecruit
 MAX_UPLOAD_MB=20
+MAX_TOTAL_UPLOAD_MB=100
+MAX_CV_FILES=20
+SMARTRECRUIT_API_KEY=change_me_for_local_development
+RATE_LIMIT_REQUESTS=20
+RATE_LIMIT_WINDOW_SECONDS=60
+JOB_WORKER_COUNT=2
+EMBEDDING_BATCH_SIZE=32
+LLM_INPUT_CHAR_LIMIT=12000
+VECTOR_BACKEND=pgvector
 ```
 
-Le backend utilise les services configures. Si NVIDIA API ou PostgreSQL ne repond pas, l'analyse retourne une erreur.
+Le frontend doit envoyer la meme cle API au backend :
+
+```env
+VITE_SMARTRECRUIT_API_KEY=change_me_for_local_development
+VITE_MAX_UPLOAD_MB=20
+VITE_MAX_TOTAL_UPLOAD_MB=100
+VITE_MAX_CV_FILES=20
+```
+
+Le backend exige `SMARTRECRUIT_API_KEY` sur les routes d'analyse et de document. Les clients doivent envoyer `X-API-Key: <cle>` ou `Authorization: Bearer <cle>`. Si NVIDIA API ou PostgreSQL ne repond pas, l'analyse retourne une erreur generique cote client et garde les details dans les logs serveur.
 
 ## Lancement
 
@@ -139,18 +160,21 @@ Terminal 1 - PostgreSQL avec Docker Compose, si vous utilisez Docker :
 cd ~/SmartRecruit/backend
 docker compose down
 docker compose up -d
+python scripts/initialize_databases.py
 ```
 
-Si PostgreSQL est installe directement sur la machine, il suffit que la base indiquee dans `DATABASE_URL` existe et que le service PostgreSQL soit demarre.
+Le compose utilise l'image `pgvector/pgvector:pg16`, lie le port a `127.0.0.1` et lit les identifiants depuis les variables `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` et `POSTGRES_PORT`. Changez au minimum `POSTGRES_PASSWORD` hors developpement local.
+
+Si PostgreSQL est installe directement sur la machine, il faut que la base indiquee dans `DATABASE_URL` existe, que l'extension `vector` soit disponible, puis lancer les migrations avec `python scripts/initialize_databases.py`.
 
 Terminal 2 - Backend FastAPI :
 
 ```bash
 cd ~/SmartRecruit/backend
-python scripts/free_port.py 8002
+python scripts/free_port.py 8002 --yes --allowed-name python --allowed-name uvicorn
 
 python -m uvicorn app.main:app \
-  --host 0.0.0.0 \
+  --host 127.0.0.1 \
   --port 8002
 ```
 
@@ -176,7 +200,7 @@ cd ~/SmartRecruit/backend
 python scripts/check_nvidia_api.py
 ```
 
-## Endpoint principal
+## Endpoints principaux
 
 `POST /api/ranking/analyze`
 
@@ -185,6 +209,14 @@ Form-data :
 - `job_file` : fiche de poste ;
 - `cv_files` : un ou plusieurs CV ;
 - `top_k` : nombre de preuves semantiques recuperees par candidat.
+
+Cette route reste disponible pour compatibilite, mais l'interface utilise le mode asynchrone :
+
+- `POST /api/ranking/jobs` : cree une analyse et retourne `analysis_id` ;
+- `GET /api/ranking/jobs/{analysis_id}` : suit l'etat, la progression et le resultat ;
+- `DELETE /api/ranking/jobs/{analysis_id}` : demande l'annulation de l'analyse.
+
+Les uploads sont lus par chunks, limites par fichier, par nombre de CV et par taille cumulee, stockes sous noms aleatoires dans un dossier temporaire par analyse, puis supprimes en fin de traitement.
 
 ## Test avec affichage automatique
 
@@ -202,7 +234,9 @@ cd C:\Users\pc\SmartRecruit\backend
 python scripts\analyze_samples.py
 ```
 
-Par defaut, le script prend `samples/fiche_poste.pdf` comme fiche de poste et analyse tous les autres PDF du dossier comme CV. Pour utiliser un autre dossier de CV :
+Par defaut, le script prend `samples/fiche_poste.pdf` comme fiche de poste et analyse tous les autres PDF du dossier comme CV. Le rapport HTML masque le texte brut extrait afin d'eviter d'exposer le contenu complet des CV. L'option `--include-raw-text` existe seulement pour du diagnostic local explicite.
+
+Pour utiliser un autre dossier de CV :
 
 ```powershell
 python scripts\analyze_samples.py --job-file samples\fiche_poste.pdf --cv-dir "C:\chemin\vers\mes_cv"
@@ -210,18 +244,38 @@ python scripts\analyze_samples.py --job-file samples\fiche_poste.pdf --cv-dir "C
 
 ## Tests
 
-Tests unitaires :
+Backend :
 
 ```bash
 cd ~/SmartRecruit/backend
-pytest tests/unit tests/test_health.py
-python -m compileall app
+python -m compileall app scripts tests alembic
+ruff check .
+mypy app
+coverage run -m pytest tests/unit tests/test_health.py
+coverage report
 ```
 
-Tests d'integration avec NVIDIA API et PostgreSQL actifs :
+Frontend :
+
+```bash
+cd ~/SmartRecruit/frontend
+npm run lint
+npm run test
+npm run build
+npm audit
+```
+
+Tests d'integration avec NVIDIA API et PostgreSQL/pgvector actifs :
 
 ```bash
 cd ~/SmartRecruit/backend
 export SMARTRECRUIT_RUN_INTEGRATION=1
 pytest tests/integration
 ```
+
+## Confidentialite et dependances
+
+- Les fichiers envoyes ne sont pas conserves apres l'analyse.
+- Les logs doivent rester sans texte de CV ni contenu de fiche de poste ; ils utilisent des identifiants de correlation (`X-Request-ID`, `analysis_id`).
+- Les dependances Python de production sont dans `backend/requirements.txt`, les dependances de developpement dans `backend/requirements-dev.txt`, et les verrous dans `backend/requirements.lock` / `backend/requirements-dev.lock`.
+- PyMuPDF est utilise pour l'extraction PDF ; verifier sa licence et ses conditions de distribution avant tout usage commercial ou redistribution.

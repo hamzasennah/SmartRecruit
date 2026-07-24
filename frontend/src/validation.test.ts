@@ -1,0 +1,35 @@
+import { describe, expect, it } from "vitest";
+import { hasSupportedExtension, validateSelection } from "./validation";
+
+function file(name: string, size = 10): File {
+  return new File(["x".repeat(size)], name);
+}
+
+describe("validateSelection", () => {
+  it("requires a job file and at least one CV", () => {
+    expect(validateSelection(null, [])).toContain("fiche de poste");
+  });
+
+  it("enforces CV count", () => {
+    const result = validateSelection(file("job.txt"), [file("a.txt"), file("b.txt")], {
+      maxCvFiles: 1,
+      maxUploadMb: 1,
+      maxTotalUploadMb: 10,
+    });
+    expect(result).toContain("Nombre maximal");
+  });
+
+  it("enforces file extensions", () => {
+    expect(hasSupportedExtension("cv.exe")).toBe(false);
+    expect(hasSupportedExtension("cv.pdf")).toBe(true);
+  });
+
+  it("enforces total size", () => {
+    const result = validateSelection(file("job.txt", 6), [file("cv.txt", 6)], {
+      maxCvFiles: 2,
+      maxUploadMb: 1,
+      maxTotalUploadMb: 0.00001,
+    });
+    expect(result).toContain("Taille cumulee");
+  });
+});

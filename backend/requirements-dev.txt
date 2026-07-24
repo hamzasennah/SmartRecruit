@@ -1,0 +1,8 @@
+-r requirements.txt
+
+alembic>=1.13
+coverage>=7.6
+mypy>=1.11
+pip-tools>=7.4
+pytest>=8.2
+ruff>=0.8

@@ -269,7 +269,7 @@ def _extracted_text_section(documents: list[dict]) -> str:
                   {"".join(section_blocks) or '<p class="muted">Aucune section detectee.</p>'}
                   <h3>Texte brut extrait complet</h3>
                 </div>
-                <pre>{escape(str(document.get("text", "")))}</pre>
+                {_raw_text_block(document)}
               </details>
             </div>
             """
@@ -281,6 +281,17 @@ def _extracted_text_section(documents: list[dict]) -> str:
       {"".join(panels)}
     </section>
     """
+
+
+def _raw_text_block(document: dict) -> str:
+    if document.get("raw_text_included"):
+        return f"<pre>{escape(str(document.get('text', '')))}</pre>"
+    return (
+        '<div class="sections">'
+        '<p class="muted">Texte brut masque par defaut pour proteger les donnees personnelles. '
+        "Relancer le script avec --include-raw-text uniquement dans un contexte local controle.</p>"
+        "</div>"
+    )
 
 
 def _errors_section(errors: list[str]) -> str:

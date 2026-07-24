@@ -1,15 +1,57 @@
 from __future__ import annotations
 
+import logging
 import re
 
+from app.config import settings
 from app.schemas.document import DocumentText
 from app.schemas.job import LanguageRequirement, StructuredJobDescription
+from app.services.extraction.coercion import (
+    coerce_int as _coerce_int,
+)
+from app.services.extraction.coercion import (
+    coerce_scalar as _coerce_scalar,
+)
+from app.services.extraction.coercion import (
+    coerce_string_list as _coerce_string_list,
+)
 from app.services.extraction.output_validator import parse_json_payload, validate_model
 from app.services.extraction.prompts import JOB_EXTRACTION_PROMPT
 from app.services.normalization.education_normalizer import normalize_education_level
 from app.services.normalization.language_normalizer import normalize_language, normalize_language_level
 from app.services.normalization.skill_normalizer import normalize_skill_list
-from app.services.normalization.text_normalizer import normalize_text
+from app.services.normalization.text_normalizer import dedupe_by_normalized_key, normalize_text
+from app.services.rules.domain_rules import get_domain_rule_section
+
+logger = logging.getLogger(__name__)
+
+_JOB_RULES = get_domain_rule_section("job")
+
+
+def _job_rule_list(name: str) -> list[str]:
+    value = _JOB_RULES.get(name, [])
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def _job_rule_map(name: str) -> dict[str, str]:
+    value = _JOB_RULES.get(name, {})
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): str(mapped) for key, mapped in value.items()}
+
+
+def _technical_text_rules() -> dict[str, tuple[str, tuple[str, ...]]]:
+    value = _JOB_RULES.get("technical_text_rules", {})
+    if not isinstance(value, dict):
+        return {}
+    rules: dict[str, tuple[str, tuple[str, ...]]] = {}
+    for skill, rule in value.items():
+        if not isinstance(rule, dict):
+            continue
+        hints = rule.get("hints", [])
+        if isinstance(hints, list):
+            rules[str(skill)] = (str(rule.get("bucket", "preferred")), tuple(str(item) for item in hints))
+    return rules
 
 
 class JobExtractor:
@@ -17,22 +59,30 @@ class JobExtractor:
         self._llm = llm_client
 
     def extract(self, document: DocumentText) -> StructuredJobDescription:
-        raw_payload = self._llm.generate_json(JOB_EXTRACTION_PROMPT.format(text=document.text[:12000]))
+        raw_payload = self._llm.generate_json(JOB_EXTRACTION_PROMPT.format(text=_llm_input_text(document)))
         job = validate_model(_coerce_job_payload(raw_payload), StructuredJobDescription)
 
         job.required_skills.mandatory = normalize_skill_list(job.required_skills.mandatory)
         job.required_skills.preferred = normalize_skill_list(job.required_skills.preferred)
         job.required_skills.soft = normalize_skill_list(job.required_skills.soft)
         _apply_job_text_rules(job, document.text)
-        job.education_requirements.minimum_level = normalize_education_level(
-            job.education_requirements.minimum_level
-        )
+        job.education_requirements.minimum_level = normalize_education_level(job.education_requirements.minimum_level) or ""
         for language in job.language_requirements:
             language.language = normalize_language(language.language)
             language.minimum_level = normalize_language_level(language.minimum_level)
         job.responsibilities = _clean_responsibilities(document.text, job.responsibilities)
         job.raw_text_preview = document.text[:600]
         return job
+
+
+def _llm_input_text(document: DocumentText) -> str:
+    limit = settings.llm_input_char_limit
+    if len(document.text) > limit:
+        logger.info(
+            "Texte fiche de poste tronque avant appel LLM.",
+            extra={"filename": document.filename, "char_count": len(document.text), "limit": limit},
+        )
+    return document.text[:limit]
 
 
 def _coerce_job_payload(raw_payload: str | dict) -> dict:
@@ -108,14 +158,14 @@ def _coerce_language_requirements(value) -> list[dict]:
             continue
         if not isinstance(item, dict):
             continue
-        language = _coerce_scalar(
+        language_value = _coerce_scalar(
             item.get("language") or item.get("name") or item.get("lang"),
             preferred_keys=("language", "name", "value", "text"),
         )
-        if language:
+        if language_value:
             result.append(
                 {
-                    "language": language,
+                    "language": language_value,
                     "minimum_level": _coerce_scalar(
                         item.get("minimum_level") or item.get("level"),
                         preferred_keys=("minimum_level", "level", "name", "value", "text"),
@@ -125,87 +175,11 @@ def _coerce_language_requirements(value) -> list[dict]:
     return result
 
 
-def _coerce_string_list(value, preferred_keys: tuple[str, ...] = ("value", "name", "text")) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value]
-    if not isinstance(value, list):
-        return [str(value)]
-    result: list[str] = []
-    for item in value:
-        scalar = _coerce_scalar(item, preferred_keys)
-        if scalar:
-            result.append(scalar)
-    return result
-
-
-def _coerce_scalar(value, preferred_keys: tuple[str, ...] = ("value", "name", "text")) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        for key in preferred_keys:
-            candidate = value.get(key)
-            if isinstance(candidate, str) and candidate.strip():
-                return candidate
-        for candidate in value.values():
-            if isinstance(candidate, str) and candidate.strip():
-                return candidate
-        return None
-    return str(value)
-
-
-def _coerce_int(value, default: int = 0) -> int:
-    if value is None or value == "":
-        return default
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    match = re.search(r"\d+", str(value))
-    return int(match.group(0)) if match else default
-
-
-LANGUAGE_SKILLS = {"french", "english", "francais", "anglais", "arabic", "arabe"}
-LANGUAGE_TOKEN_MAP = {
-    "french": "french",
-    "francais": "francais",
-    "english": "english",
-    "anglais": "anglais",
-    "arabic": "arabic",
-    "arabe": "arabe",
-}
-LANGUAGE_LEVEL_TERMS = {
-    "fluent",
-    "courant",
-    "professional",
-    "professionnel",
-    "native",
-    "maternel",
-    "bilingual",
-    "bilingue",
-    "advanced",
-    "avance",
-    "intermediate",
-    "intermediaire",
-}
-SOFT_SKILL_TERMS = ("autonomy", "leadership", "self-driven", "self driven")
-TECHNICAL_TEXT_RULES = {
-    "power bi": ("mandatory", ("power bi", "powerbi")),
-    "excel": ("mandatory", ("excel",)),
-    "dashboard": ("mandatory", ("dashboard", "dashbord", "tableau de bord")),
-    "kpi": ("mandatory", ("kpi",)),
-    "snowflake": ("mandatory", ("snowflake",)),
-    "azure": ("mandatory", ("azure",)),
-    "foundry": ("preferred", ("foundry",)),
-    "project management": ("preferred", ("project management", "gestion de projet")),
-    "business needs": ("preferred", ("business needs", "besoins metiers")),
-    "supply chain": ("preferred", ("supply chain",)),
-    "spm": ("preferred", ("spm",)),
-    "itms": ("preferred", ("itms",)),
-}
+LANGUAGE_SKILLS = set(_job_rule_list("language_skills"))
+LANGUAGE_TOKEN_MAP = _job_rule_map("language_token_map")
+LANGUAGE_LEVEL_TERMS = set(_job_rule_list("language_level_terms"))
+SOFT_SKILL_TERMS = tuple(_job_rule_list("soft_skill_terms"))
+TECHNICAL_TEXT_RULES = _technical_text_rules()
 
 
 def _apply_job_text_rules(job: StructuredJobDescription, text: str) -> None:
@@ -359,8 +333,8 @@ def _clean_responsibilities(text: str, extracted: list[str]) -> list[str]:
     ):
         responsibilities.append("Garantir la disponibilite des donnees dans Snowflake/Azure.")
     if responsibilities:
-        return _dedupe(responsibilities)
-    return _dedupe([item for item in extracted if _looks_like_responsibility(item)])
+        return dedupe_by_normalized_key(responsibilities)
+    return dedupe_by_normalized_key([item for item in extracted if _looks_like_responsibility(item)])
 
 
 def _looks_like_responsibility(value: str) -> bool:
@@ -379,14 +353,3 @@ def _looks_like_responsibility(value: str) -> bool:
         "reporting", "dashboard", "kpi", "workstream",
     )
     return any(signal in normalized for signal in action_signals)
-
-
-def _dedupe(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        key = normalize_text(value)
-        if key and key not in seen:
-            seen.add(key)
-            result.append(value)
-    return result

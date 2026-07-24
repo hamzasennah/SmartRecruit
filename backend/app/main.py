@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from uuid import uuid4
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import documents, health, ranking
 from app.config import settings
 from app.core.logging_config import configure_logging
-
+from app.core.request_context import request_id_context
 
 configure_logging()
 
@@ -28,6 +30,19 @@ app.add_middleware(
 app.include_router(health.router, prefix=settings.api_prefix)
 app.include_router(documents.router, prefix=settings.api_prefix)
 app.include_router(ranking.router, prefix=settings.api_prefix)
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    incoming = request.headers.get("X-Request-ID")
+    request_id = incoming.strip() if incoming else uuid4().hex
+    token = request_id_context.set(request_id)
+    try:
+        response = await call_next(request)
+    finally:
+        request_id_context.reset(token)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 
 @app.get("/")

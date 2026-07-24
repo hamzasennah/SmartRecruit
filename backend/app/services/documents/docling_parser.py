@@ -9,7 +9,12 @@ from app.services.documents.section_segmenter import segment_sections
 
 
 class DoclingParser:
-    def extract(self, path: str | Path, kind: DocumentKind = DocumentKind.unknown) -> DocumentText:
+    def extract(
+        self,
+        path: str | Path,
+        kind: DocumentKind = DocumentKind.unknown,
+        filename_override: str | None = None,
+    ) -> DocumentText:
         path = Path(path)
         suffix = path.suffix.lower()
         if suffix not in SUPPORTED_EXTENSIONS:
@@ -23,7 +28,8 @@ class DoclingParser:
         text = text.strip()
         if not text:
             raise DocumentParsingError(f"Aucun texte exploitable extrait depuis {path.name}.")
-        return DocumentText(filename=path.name, kind=kind, text=text, char_count=len(text), sections=segment_sections(text))
+        filename = filename_override or path.name
+        return DocumentText(filename=filename, kind=kind, text=text, char_count=len(text), sections=segment_sections(text))
 
     def _extract_pdf(self, path: Path) -> str:
         import fitz

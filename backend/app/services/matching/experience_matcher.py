@@ -34,8 +34,8 @@ def match_experience(cv: StructuredCV, job: StructuredJobDescription) -> dict:
             explicit_total += experience.duration_months
             if experience.relevance_score >= 0.45:
                 explicit_relevant += experience.duration_months
-    total_months = calculate_total_unique_months(periods) if periods else explicit_total
-    relevant_months = calculate_total_unique_months(relevant) if relevant else explicit_relevant
+    total_months = calculate_total_unique_months(periods) + explicit_total
+    relevant_months = calculate_total_unique_months(relevant) + explicit_relevant
     score = round(min(relevant_months / required, 1.0) * 100, 2)
     return {
         "applicable": True,

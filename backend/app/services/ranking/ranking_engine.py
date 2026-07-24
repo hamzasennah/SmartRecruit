@@ -1,6 +1,5 @@
 from app.schemas.ranking import RankedCandidate
 
-
 TIE_SCORE_TOLERANCE = 0.5
 
 

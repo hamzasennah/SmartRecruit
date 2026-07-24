@@ -29,3 +29,14 @@ def dedupe_preserve_order(values: list[str]) -> list[str]:
             result.append(normalized)
     return result
 
+
+def dedupe_by_normalized_key(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        key = normalize_text(value)
+        if key and key not in seen:
+            seen.add(key)
+            result.append(value)
+    return result
+

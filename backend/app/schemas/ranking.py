@@ -18,3 +18,17 @@ class RankingResponse(BaseModel):
     total_candidates: int
     ranking: list[RankedCandidate] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+
+
+class AnalysisJobCreated(BaseModel):
+    analysis_id: str
+    status: str
+    status_url: str
+
+
+class AnalysisJobStatus(BaseModel):
+    analysis_id: str
+    status: str
+    progress: int = 0
+    result: RankingResponse | None = None
+    error: str | None = None

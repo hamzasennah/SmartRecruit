@@ -41,7 +41,6 @@ def build_weaknesses(category_scores) -> list[str]:
     if technical:
         details = technical.details or {}
         missing_mandatory = details.get("missing_mandatory") or []
-        missing_preferred = details.get("missing_preferred") or []
         partial_mandatory = details.get("partial_mandatory") or []
         if missing_mandatory:
             weaknesses.append(f"Competences obligatoires manquantes: {_join_items(missing_mandatory[:6])}.")

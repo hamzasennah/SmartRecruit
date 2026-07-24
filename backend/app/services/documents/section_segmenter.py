@@ -9,8 +9,8 @@ SECTION_PATTERNS = {"skills": r"(competences|skills|technologies|outils)", "expe
 
 def segment_sections(text: str) -> dict[str, str]:
     lines = [line.strip() for line in re.split(r"[\n\r]+", text) if line.strip()]
-    sections: dict[str, list[str]] = {"full_text": []}
-    current = "full_text"
+    sections: dict[str, list[str]] = {}
+    current = "unclassified"
     for line in lines:
         section = _section_for_line(line)
         if section:
@@ -18,8 +18,8 @@ def segment_sections(text: str) -> dict[str, str]:
             sections.setdefault(current, [])
         else:
             sections.setdefault(current, []).append(line)
-    compact = {key: "\n".join(value).strip() for key, value in sections.items() if "\n".join(value).strip()}
-    compact.setdefault("full_text", text)
+    compact = {"full_text": text}
+    compact.update({key: "\n".join(value).strip() for key, value in sections.items() if "\n".join(value).strip()})
     return compact
 
 

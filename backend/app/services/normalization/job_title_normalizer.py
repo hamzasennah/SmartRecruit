@@ -4,7 +4,7 @@ import json
 from functools import lru_cache
 
 from app.config import settings
-from app.services.normalization.text_normalizer import dedupe_preserve_order, normalize_text
+from app.services.normalization.text_normalizer import normalize_text
 
 
 @lru_cache(maxsize=1)
@@ -17,8 +17,4 @@ def _aliases() -> dict[str, str]:
 def normalize_job_title(title: str | None) -> str:
     normalized = normalize_text(title)
     return _aliases().get(normalized, normalized)
-
-
-def normalize_job_titles(titles: list[str]) -> list[str]:
-    return dedupe_preserve_order([normalize_job_title(title) for title in titles])
 

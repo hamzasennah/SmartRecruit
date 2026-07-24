@@ -2,8 +2,7 @@ from app.schemas.cv import StructuredCV
 from app.schemas.job import StructuredJobDescription
 from app.services.normalization.skill_normalizer import normalize_skill_list
 
-
-PARTIAL_SKILL_MATCH_WEIGHTS = {}
+PARTIAL_SKILL_MATCH_WEIGHTS: dict[str, dict[str, float]] = {}
 MANDATORY_SCORE_WEIGHT = 1.0
 PREFERRED_BONUS_WEIGHT = 0.10
 

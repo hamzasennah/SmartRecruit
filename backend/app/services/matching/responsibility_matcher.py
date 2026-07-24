@@ -2,61 +2,45 @@ import re
 
 from app.schemas.cv import StructuredCV
 from app.schemas.job import StructuredJobDescription
-from app.services.normalization.text_normalizer import normalize_text, tokenize
+from app.services.normalization.text_normalizer import dedupe_by_normalized_key, normalize_text, tokenize
+from app.services.rules.domain_rules import get_domain_rule_section
+
+_RESPONSIBILITY_RULES = get_domain_rule_section("responsibility")
 
 
-STOPWORDS = {
-    "a", "an", "and", "avec", "au", "aux", "by", "de", "des", "du", "en",
-    "et", "for", "in", "la", "le", "les", "of", "or", "pour", "the", "to",
-    "un", "une", "with",
-}
+def _rule_list(name: str) -> list[str]:
+    value = _RESPONSIBILITY_RULES.get(name, [])
+    return [str(item) for item in value] if isinstance(value, list) else []
 
-CRITICAL_TERMS = [
-    "power bi",
-    "excel",
-    "foundry",
-    "snowflake",
-    "azure",
-    "spm",
-    "itms",
-    "kpi",
-    "dashboard",
-    "dashbord",
-    "data lake",
-    "datalake",
-    "project management",
-    "business needs",
-    "supply chain",
-    "packaging",
-]
 
-ALLOWED_EVIDENCE_SECTIONS = {"experience", "experiences", "projects", "responsibilities", "skills"}
-MIN_RETRIEVAL_EVIDENCE_SCORE = 0.2
-FULL_RESPONSIBILITY_THRESHOLD = 70.0
-PARTIAL_RESPONSIBILITY_THRESHOLD = 20.0
+def _rule_float(name: str, default: float) -> float:
+    value = _RESPONSIBILITY_RULES.get(name, default)
+    return float(value) if isinstance(value, int | float) else default
 
-CONCEPT_GROUPS = {
-    "dashboard_reporting": {
-        "responsibility": {"dashboard", "dashbord", "tableau de bord", "kpi", "reporting"},
-        "evidence": {"dashboard", "dashbord", "tableau de bord", "kpi", "reporting", "visualisation", "visualization", "tableaux de suivi"},
-    },
-    "data_processing": {
-        "responsibility": {"data", "donnees", "snowflake", "azure", "data lake", "datalake", "disponibilite"},
-        "evidence": {"data", "donnees", "azure", "snowflake", "data lake", "datalake", "etl", "pipeline", "stockage", "warehouse", "datamart", "flux", "points de donnees"},
-    },
-    "workflow_management": {
-        "responsibility": {"workstream", "project management", "piloter", "lead", "coordination"},
-        "evidence": {"pilotage", "piloter", "coordination", "lead", "management", "projet", "workstream"},
-    },
-    "business_needs": {
-        "responsibility": {"business needs", "besoins", "metiers", "clarifier", "couverture"},
-        "evidence": {"besoins", "metiers", "fonctionnel", "cahier", "specifications", "requirements", "couverture", "clarifier"},
-    },
-    "automation": {
-        "responsibility": {"automatisation", "automatiser", "flux"},
-        "evidence": {"automatisation", "automatiser", "flux"},
-    },
-}
+
+def _concept_groups() -> dict[str, dict[str, set[str]]]:
+    value = _RESPONSIBILITY_RULES.get("concept_groups", {})
+    if not isinstance(value, dict):
+        return {}
+    groups: dict[str, dict[str, set[str]]] = {}
+    for name, raw_group in value.items():
+        if not isinstance(raw_group, dict):
+            continue
+        group: dict[str, set[str]] = {}
+        for key in ("responsibility", "evidence"):
+            terms = raw_group.get(key, [])
+            group[key] = {str(term) for term in terms} if isinstance(terms, list) else set()
+        groups[str(name)] = group
+    return groups
+
+
+STOPWORDS = set(_rule_list("stopwords"))
+CRITICAL_TERMS = _rule_list("critical_terms")
+ALLOWED_EVIDENCE_SECTIONS = set(_rule_list("allowed_evidence_sections"))
+MIN_RETRIEVAL_EVIDENCE_SCORE = _rule_float("min_retrieval_evidence_score", 0.2)
+FULL_RESPONSIBILITY_THRESHOLD = _rule_float("full_responsibility_threshold", 70.0)
+PARTIAL_RESPONSIBILITY_THRESHOLD = _rule_float("partial_responsibility_threshold", 20.0)
+CONCEPT_GROUPS = _concept_groups()
 
 
 def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retrieved_evidence: list[dict] | None = None) -> dict:
@@ -118,7 +102,7 @@ def _candidate_passages(cv: StructuredCV, retrieved_evidence: list[dict] | None)
     for item in retrieved_evidence or []:
         if _is_relevant_retrieved_evidence(item):
             passages.append(str(item.get("text", "")))
-    return _dedupe([passage for passage in passages if len(passage.strip()) >= 20])
+    return dedupe_by_normalized_key([passage for passage in passages if len(passage.strip()) >= 20])
 
 
 def _is_relevant_retrieved_evidence(item: dict) -> bool:
@@ -130,9 +114,11 @@ def _is_relevant_retrieved_evidence(item: dict) -> bool:
 
 def _best_passage_match(responsibility: str, passages: list[str]) -> dict:
     best = {"responsibility": responsibility, "status": "none", "score": 0.0, "evidence": ""}
+    best_score = 0.0
     for passage in passages:
         score, status = _passage_match_score(responsibility, passage)
-        if score > best["score"]:
+        if score > best_score:
+            best_score = score
             best = {
                 "responsibility": responsibility,
                 "status": status,
@@ -300,13 +286,3 @@ def _meaningful_tokens(value: str) -> set[str]:
 def _terms_in_text(text: str) -> list[str]:
     normalized = normalize_text(text)
     return [term for term in CRITICAL_TERMS if normalize_text(term) in normalized]
-
-
-def _dedupe(values: list[str]) -> list[str]:
-    seen, result = set(), []
-    for value in values:
-        key = normalize_text(value)
-        if key and key not in seen:
-            seen.add(key)
-            result.append(value)
-    return result

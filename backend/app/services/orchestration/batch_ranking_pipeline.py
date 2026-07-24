@@ -27,8 +27,9 @@ class BatchRankingPipeline:
         namespace = f"analysis_{uuid4().hex}"
         self._vector_store.reset_namespace(namespace)
         try:
-            job = self._job_pipeline.run(job_path)
-            job_id = _create_job_record(self._vector_store, job_path, job)
+            job_file_path, job_filename = _path_and_filename(job_path)
+            job = self._job_pipeline.run(job_file_path, filename_override=job_filename)
+            job_id = _create_job_record(self._vector_store, job_file_path, job_filename, job)
             matches, errors = [], []
             query = " ".join(
                 [
@@ -38,9 +39,10 @@ class BatchRankingPipeline:
                     " ".join(job.responsibilities),
                 ]
             )
-            for cv_path in cv_paths:
+            for cv_ref in cv_paths:
+                cv_path, cv_filename = _path_and_filename(cv_ref)
                 try:
-                    document, cv = self._cv_pipeline.run(cv_path)
+                    document, cv = self._cv_pipeline.run(cv_path, filename_override=cv_filename)
                     enrich_cv_with_job_skill_evidence(cv, document.text, job)
                     _create_resume_record(self._vector_store, cv_path, document, cv)
                     self._indexer.index_sections(namespace, document.filename, document.sections)
@@ -53,8 +55,8 @@ class BatchRankingPipeline:
                     matches.append((self._scoring.score_candidate(document.filename, cv, job, evidence), cv))
                 except ExternalServiceError:
                     raise
-                except Exception as exc:
-                    errors.append(f"{Path(cv_path).name}: {exc}")
+                except Exception:
+                    errors.append(f"{cv_filename}: analyse impossible")
             response = RankingResponse(
                 job=job,
                 total_candidates=len(matches),
@@ -67,11 +69,18 @@ class BatchRankingPipeline:
             self._vector_store.reset_namespace(namespace)
 
 
-def _create_job_record(vector_store, path, job) -> str | None:
+def _path_and_filename(value) -> tuple[Path, str]:
+    if hasattr(value, "path") and hasattr(value, "original_filename"):
+        return Path(value.path), str(value.original_filename)
+    path = Path(value)
+    return path, path.name
+
+
+def _create_job_record(vector_store, path, filename: str, job) -> str | None:
     if not hasattr(vector_store, "create_job_record"):
         return None
     return vector_store.create_job_record(
-        filename=Path(path).name,
+        filename=filename,
         content_hash=_file_hash(path),
         job_title=job.job_title,
         text_preview=job.raw_text_preview,

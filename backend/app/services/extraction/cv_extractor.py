@@ -1,103 +1,65 @@
 from __future__ import annotations
 
-from pathlib import Path
+import logging
 import re
+from pathlib import Path
 
+from app.config import settings
 from app.schemas.cv import Experience, Language, StructuredCV
 from app.schemas.document import DocumentText
 from app.schemas.job import StructuredJobDescription
 from app.services.experience.duration_calculator import enrich_experience_durations
+from app.services.extraction.coercion import (
+    coerce_scalar as _coerce_scalar,
+)
+from app.services.extraction.coercion import (
+    coerce_string_list as _coerce_string_list,
+)
+from app.services.extraction.coercion import (
+    coerce_year as _coerce_year,
+)
 from app.services.extraction.output_validator import parse_json_payload, validate_model
 from app.services.extraction.prompts import CV_EXTRACTION_PROMPT
 from app.services.normalization.education_normalizer import normalize_education_level
 from app.services.normalization.language_normalizer import normalize_language, normalize_language_level
 from app.services.normalization.skill_normalizer import aliases_for_skill, normalize_skill_list
 from app.services.normalization.text_normalizer import normalize_text
+from app.services.rules.domain_rules import get_domain_rule_section
+
+logger = logging.getLogger(__name__)
 
 
-KNOWN_COMPANIES = ["Experteye", "BCP", "Renault", "Maltem Africa", "Sanlam"]
-RAW_TEXT_SKILL_HINTS = {
-    "power bi": ("power bi", "powerbi", "microsoft power bi", "ms power bi"),
-    "excel": ("excel", "microsoft excel", "ms excel"),
-    "snowflake": ("snowflake",),
-    "azure": ("azure", "microsoft azure"),
-    "azure ad": ("azure ad", "azure active directory"),
-    "dashboard": ("dashboard", "dashbord", "tableau de bord", "tableaux de bord"),
-    "kpi": ("kpi", "key performance indicator", "indicateur cle", "indicateurs cles"),
-    "python": ("python",),
-    "sql": ("sql", "structured query language"),
-    "postgresql": ("postgresql", "postgres sql", "postgre sql", "postgres"),
-    "mysql": ("mysql", "my sql"),
-    "pandas": ("pandas",),
-    "dax": ("dax",),
-    "power automate": ("power automate",),
-    "power apps": ("power apps", "powerapps"),
-    "sharepoint": ("sharepoint", "share point"),
-}
-RAW_TEXT_TOOL_SKILLS = {
-    "power bi",
-    "excel",
-    "snowflake",
-    "azure",
-    "azure ad",
-    "dashboard",
-    "dax",
-    "power automate",
-    "power apps",
-    "sharepoint",
-}
-RAW_TEXT_SOFT_SKILL_HINTS = {
-    "autonomy": ("autonomy", "autonomie", "autonome"),
-    "leadership": ("leadership",),
-    "self driven": ("self driven", "self-driven", "self starter", "selfstarter"),
-}
+_CV_RULES = get_domain_rule_section("cv")
 
-CANDIDATE_ROLE_PATTERN = re.compile(
-    r"\b(data\s+analyst|data\s+scientist|data\s+engineer|developpeur|d\u00e9veloppeur|"
-    r"developer|full\s*stack|frontend|backend|ingenieur|ing\u00e9nieur|software|support|"
-    r"consultant|chef\s+de\s+projet|project\s+manager)\b",
-    flags=re.IGNORECASE,
-)
-CANDIDATE_NAME_REJECT_TERMS = {
-    "adresse",
-    "analyst",
-    "analyste",
-    "backend",
-    "casablanca",
-    "certification",
-    "competence",
-    "contact",
-    "cv",
-    "data",
-    "developpeur",
-    "developer",
-    "diplome",
-    "education",
-    "experience",
-    "frontend",
-    "fullstack",
-    "ingenieur",
-    "kenitra",
-    "langue",
-    "linkedin",
-    "logiciel",
-    "maroc",
-    "profil",
-    "projet",
-    "rabat",
-    "resume",
-    "settat",
-    "software",
-    "support",
-    "telephone",
-}
-AZURE_NON_DATA_CONTEXTS = {
-    "ad",
-    "devops",
-    "dev ops",
-    "ci",
-    "active directory",
-}
+
+def _rule_list(name: str) -> list[str]:
+    value = _CV_RULES.get(name, [])
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def _rule_tuple_map(name: str) -> dict[str, tuple[str, ...]]:
+    value = _CV_RULES.get(name, {})
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(key): tuple(str(item) for item in values)
+        for key, values in value.items()
+        if isinstance(values, list)
+    }
+
+
+def _role_pattern(roles: list[str]) -> re.Pattern[str]:
+    escaped = [re.escape(role).replace(r"\ ", r"\s+") for role in roles]
+    return re.compile(r"\b(" + "|".join(escaped) + r")\b", flags=re.IGNORECASE)
+
+
+KNOWN_COMPANIES = _rule_list("known_companies")
+RAW_TEXT_SKILL_HINTS = _rule_tuple_map("raw_text_skill_hints")
+RAW_TEXT_TOOL_SKILLS = set(_rule_list("raw_text_tool_skills"))
+RAW_TEXT_SOFT_SKILL_HINTS = _rule_tuple_map("raw_text_soft_skill_hints")
+CANDIDATE_ROLE_PATTERN = _role_pattern(_rule_list("candidate_roles"))
+CANDIDATE_NAME_REJECT_TERMS = set(_rule_list("candidate_name_reject_terms"))
+AZURE_NON_DATA_CONTEXTS = set(_rule_list("azure_non_data_contexts"))
 
 
 class CVExtractor:
@@ -105,7 +67,7 @@ class CVExtractor:
         self._llm = llm_client
 
     def extract(self, document: DocumentText) -> StructuredCV:
-        raw_payload = self._llm.generate_json(CV_EXTRACTION_PROMPT.format(text=document.text[:12000]))
+        raw_payload = self._llm.generate_json(CV_EXTRACTION_PROMPT.format(text=_llm_input_text(document)))
         cv = validate_model(_coerce_cv_payload(raw_payload), StructuredCV)
 
         cv.skills.technical = normalize_skill_list(cv.skills.technical)
@@ -121,9 +83,7 @@ class CVExtractor:
         cv.experiences = _filter_professional_experiences(cv.experiences)
         cv.experiences = enrich_experience_durations(cv.experiences)
         for education in cv.education:
-            education.normalized_level = normalize_education_level(
-                education.normalized_level or education.degree
-            )
+            education.normalized_level = normalize_education_level(education.normalized_level or education.degree) or ""
         for language in cv.languages:
             language.language = normalize_language(language.language)
             language.normalized_level = normalize_language_level(language.normalized_level)
@@ -133,6 +93,16 @@ class CVExtractor:
             cv.candidate_name = _extract_candidate_name_from_raw_text(document.text) or cv.candidate_name
         cv.raw_text_preview = document.text[:600]
         return cv
+
+
+def _llm_input_text(document: DocumentText) -> str:
+    limit = settings.llm_input_char_limit
+    if len(document.text) > limit:
+        logger.info(
+            "Texte CV tronque avant appel LLM.",
+            extra={"filename": document.filename, "char_count": len(document.text), "limit": limit},
+        )
+    return document.text[:limit]
 
 
 def _coerce_cv_payload(raw_payload: str | dict) -> dict:
@@ -169,21 +139,6 @@ def _coerce_cv_payload(raw_payload: str | dict) -> dict:
     return payload
 
 
-def _coerce_string_list(value, preferred_keys: tuple[str, ...] = ("value", "name", "text")) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value]
-    if not isinstance(value, list):
-        return [str(value)]
-    result: list[str] = []
-    for item in value:
-        scalar = _coerce_scalar(item, preferred_keys)
-        if scalar:
-            result.append(scalar)
-    return result
-
-
 def _coerce_cv_languages(value) -> list[dict]:
     if value is None:
         return []
@@ -197,15 +152,15 @@ def _coerce_cv_languages(value) -> list[dict]:
             continue
         if not isinstance(item, dict):
             continue
-        language = _coerce_scalar(
+        language_value = _coerce_scalar(
             item.get("language") or item.get("name") or item.get("lang"),
             preferred_keys=("language", "name", "value", "text"),
         )
-        if not language:
+        if not language_value:
             continue
         result.append(
             {
-                "language": language,
+                "language": language_value,
                 "normalized_level": _coerce_scalar(
                     item.get("normalized_level") or item.get("level"),
                     preferred_keys=("normalized_level", "level", "name", "value", "text"),
@@ -213,34 +168,6 @@ def _coerce_cv_languages(value) -> list[dict]:
             }
         )
     return result
-
-
-def _coerce_scalar(value, preferred_keys: tuple[str, ...] = ("value", "name", "text")) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        for key in preferred_keys:
-            candidate = value.get(key)
-            if isinstance(candidate, str) and candidate.strip():
-                return candidate
-        for candidate in value.values():
-            if isinstance(candidate, str) and candidate.strip():
-                return candidate
-        return None
-    return str(value)
-
-
-def _coerce_year(value) -> int | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    match = re.search(r"(19|20)\d{2}", str(value))
-    return int(match.group(0)) if match else None
 
 
 def _candidate_name_needs_recovery(value: str | None, filename: str) -> bool:

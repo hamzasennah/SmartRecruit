@@ -1,12 +1,12 @@
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: smartrecruit
-      POSTGRES_PASSWORD: smartrecruit
-      POSTGRES_DB: smartrecruit
+      POSTGRES_USER: ${POSTGRES_USER:-smartrecruit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-smartrecruit}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

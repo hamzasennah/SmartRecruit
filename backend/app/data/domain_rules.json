@@ -1,0 +1,206 @@
+{
+  "cv": {
+    "known_companies": ["Experteye", "BCP", "Renault", "Maltem Africa", "Sanlam"],
+    "raw_text_skill_hints": {
+      "power bi": ["power bi", "powerbi", "microsoft power bi", "ms power bi"],
+      "excel": ["excel", "microsoft excel", "ms excel"],
+      "snowflake": ["snowflake"],
+      "azure": ["azure", "microsoft azure"],
+      "azure ad": ["azure ad", "azure active directory"],
+      "dashboard": ["dashboard", "dashbord", "tableau de bord", "tableaux de bord"],
+      "kpi": ["kpi", "key performance indicator", "indicateur cle", "indicateurs cles"],
+      "python": ["python"],
+      "sql": ["sql", "structured query language"],
+      "postgresql": ["postgresql", "postgres sql", "postgre sql", "postgres"],
+      "mysql": ["mysql", "my sql"],
+      "pandas": ["pandas"],
+      "dax": ["dax"],
+      "power automate": ["power automate"],
+      "power apps": ["power apps", "powerapps"],
+      "sharepoint": ["sharepoint", "share point"]
+    },
+    "raw_text_tool_skills": [
+      "power bi",
+      "excel",
+      "snowflake",
+      "azure",
+      "azure ad",
+      "dashboard",
+      "dax",
+      "power automate",
+      "power apps",
+      "sharepoint"
+    ],
+    "raw_text_soft_skill_hints": {
+      "autonomy": ["autonomy", "autonomie", "autonome"],
+      "leadership": ["leadership"],
+      "self driven": ["self driven", "self-driven", "self starter", "selfstarter"]
+    },
+    "candidate_roles": [
+      "data analyst",
+      "data scientist",
+      "data engineer",
+      "developpeur",
+      "d\u00e9veloppeur",
+      "developer",
+      "full stack",
+      "fullstack",
+      "frontend",
+      "backend",
+      "ingenieur",
+      "ing\u00e9nieur",
+      "software",
+      "support",
+      "consultant",
+      "chef de projet",
+      "project manager"
+    ],
+    "candidate_name_reject_terms": [
+      "adresse",
+      "analyst",
+      "analyste",
+      "backend",
+      "casablanca",
+      "certification",
+      "competence",
+      "contact",
+      "cv",
+      "data",
+      "developpeur",
+      "developer",
+      "diplome",
+      "education",
+      "experience",
+      "frontend",
+      "fullstack",
+      "ingenieur",
+      "kenitra",
+      "langue",
+      "linkedin",
+      "logiciel",
+      "maroc",
+      "profil",
+      "projet",
+      "rabat",
+      "resume",
+      "settat",
+      "software",
+      "support",
+      "telephone"
+    ],
+    "azure_non_data_contexts": ["ad", "devops", "dev ops", "ci", "active directory"]
+  },
+  "job": {
+    "language_skills": ["french", "english", "francais", "anglais", "arabic", "arabe"],
+    "language_token_map": {
+      "french": "french",
+      "francais": "francais",
+      "english": "english",
+      "anglais": "anglais",
+      "arabic": "arabic",
+      "arabe": "arabe"
+    },
+    "language_level_terms": [
+      "fluent",
+      "courant",
+      "professional",
+      "professionnel",
+      "native",
+      "maternel",
+      "bilingual",
+      "bilingue",
+      "advanced",
+      "avance",
+      "intermediate",
+      "intermediaire"
+    ],
+    "soft_skill_terms": ["autonomy", "leadership", "self-driven", "self driven"],
+    "technical_text_rules": {
+      "power bi": {"bucket": "mandatory", "hints": ["power bi", "powerbi"]},
+      "excel": {"bucket": "mandatory", "hints": ["excel"]},
+      "dashboard": {"bucket": "mandatory", "hints": ["dashboard", "dashbord", "tableau de bord"]},
+      "kpi": {"bucket": "mandatory", "hints": ["kpi"]},
+      "snowflake": {"bucket": "mandatory", "hints": ["snowflake"]},
+      "azure": {"bucket": "mandatory", "hints": ["azure"]},
+      "foundry": {"bucket": "preferred", "hints": ["foundry"]},
+      "project management": {"bucket": "preferred", "hints": ["project management", "gestion de projet"]},
+      "business needs": {"bucket": "preferred", "hints": ["business needs", "besoins metiers"]},
+      "supply chain": {"bucket": "preferred", "hints": ["supply chain"]},
+      "spm": {"bucket": "preferred", "hints": ["spm"]},
+      "itms": {"bucket": "preferred", "hints": ["itms"]}
+    }
+  },
+  "responsibility": {
+    "stopwords": [
+      "a",
+      "an",
+      "and",
+      "avec",
+      "au",
+      "aux",
+      "by",
+      "de",
+      "des",
+      "du",
+      "en",
+      "et",
+      "for",
+      "in",
+      "la",
+      "le",
+      "les",
+      "of",
+      "or",
+      "pour",
+      "the",
+      "to",
+      "un",
+      "une",
+      "with"
+    ],
+    "critical_terms": [
+      "power bi",
+      "excel",
+      "foundry",
+      "snowflake",
+      "azure",
+      "spm",
+      "itms",
+      "kpi",
+      "dashboard",
+      "dashbord",
+      "data lake",
+      "datalake",
+      "project management",
+      "business needs",
+      "supply chain",
+      "packaging"
+    ],
+    "allowed_evidence_sections": ["experience", "experiences", "projects", "responsibilities", "skills"],
+    "min_retrieval_evidence_score": 0.2,
+    "full_responsibility_threshold": 70.0,
+    "partial_responsibility_threshold": 20.0,
+    "concept_groups": {
+      "dashboard_reporting": {
+        "responsibility": ["dashboard", "dashbord", "tableau de bord", "kpi", "reporting"],
+        "evidence": ["dashboard", "dashbord", "tableau de bord", "kpi", "reporting", "visualisation", "visualization", "tableaux de suivi"]
+      },
+      "data_processing": {
+        "responsibility": ["data", "donnees", "snowflake", "azure", "data lake", "datalake", "disponibilite"],
+        "evidence": ["data", "donnees", "azure", "snowflake", "data lake", "datalake", "etl", "pipeline", "stockage", "warehouse", "datamart", "flux", "points de donnees"]
+      },
+      "workflow_management": {
+        "responsibility": ["workstream", "project management", "piloter", "lead", "coordination"],
+        "evidence": ["pilotage", "piloter", "coordination", "lead", "management", "projet", "workstream"]
+      },
+      "business_needs": {
+        "responsibility": ["business needs", "besoins", "metiers", "clarifier", "couverture"],
+        "evidence": ["besoins", "metiers", "fonctionnel", "cahier", "specifications", "requirements", "couverture", "clarifier"]
+      },
+      "automation": {
+        "responsibility": ["automatisation", "automatiser", "flux"],
+        "evidence": ["automatisation", "automatiser", "flux"]
+      }
+    }
+  }
+}

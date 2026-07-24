@@ -13,7 +13,8 @@ import {
   Trophy,
   Upload,
 } from "lucide-react";
-import { ChangeEvent, FormEvent, InputHTMLAttributes, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, InputHTMLAttributes, useMemo, useRef, useState } from "react";
+import { SUPPORTED_EXTENSIONS, validateSelection } from "./validation";
 
 type Evidence = {
   source: string;
@@ -67,6 +68,20 @@ type RankingResponse = {
   errors: string[];
 };
 
+type AnalysisJobCreated = {
+  analysis_id: string;
+  status: string;
+  status_url: string;
+};
+
+type AnalysisJobStatus = {
+  analysis_id: string;
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  progress: number;
+  result: RankingResponse | null;
+  error: string | null;
+};
+
 type PipelineStep = {
   title: string;
   detail: string;
@@ -76,6 +91,8 @@ type PipelineStep = {
 
 const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const API_LABEL = API_URL || "proxy local /api -> 127.0.0.1:8002";
+const API_KEY = import.meta.env.VITE_SMARTRECRUIT_API_KEY || "";
+const ACCEPTED_EXTENSIONS = SUPPORTED_EXTENSIONS.join(",");
 
 const PIPELINE_STEPS: PipelineStep[] = [
   {
@@ -117,6 +134,8 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<RankingResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const activeStep = useMemo(() => {
     return PIPELINE_STEPS.findIndex((step) => progress <= step.target);
@@ -142,6 +161,15 @@ function App() {
       setError("Ajoutez une fiche de poste et au moins un CV.");
       return;
     }
+    if (!API_KEY) {
+      setError("Configurez VITE_SMARTRECRUIT_API_KEY pour lancer une analyse.");
+      return;
+    }
+    const validationError = validateSelection(jobFile, cvFiles);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
 
     const formData = new FormData();
     formData.append("job_file", jobFile);
@@ -151,35 +179,74 @@ function App() {
     setIsAnalyzing(true);
     setResult(null);
     setError(null);
-    setProgress(6);
-
-    const timer = window.setInterval(() => {
-      setProgress((current) => {
-        if (current < 25) return current + 4;
-        if (current < 58) return current + 2.5;
-        if (current < 86) return current + 1.4;
-        return Math.min(current + 0.4, 94);
-      });
-    }, 450);
+    setProgress(0);
+    setAnalysisId(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
-      const response = await fetch(`${API_URL}/api/ranking/analyze`, {
+      const response = await fetch(`${API_URL}/api/ranking/jobs`, {
         method: "POST",
+        headers: { "X-API-Key": API_KEY },
         body: formData,
+        signal: controller.signal,
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(readApiError(payload, response.status));
       }
-      setProgress(100);
-      setResult(payload as RankingResponse);
+      const created = payload as AnalysisJobCreated;
+      setAnalysisId(created.analysis_id);
+      await pollAnalysis(created.analysis_id, controller.signal);
     } catch (caught) {
-      setError(readNetworkError(caught));
-      setProgress(0);
+      if (caught instanceof DOMException && caught.name === "AbortError") {
+        setError("Analyse annulee.");
+        setProgress(0);
+      } else {
+        setError(readNetworkError(caught));
+        setProgress(0);
+      }
     } finally {
-      window.clearInterval(timer);
+      abortRef.current = null;
       setIsAnalyzing(false);
     }
+  }
+
+  async function pollAnalysis(id: string, signal: AbortSignal) {
+    while (!signal.aborted) {
+      const response = await fetch(`${API_URL}/api/ranking/jobs/${id}`, {
+        headers: { "X-API-Key": API_KEY },
+        signal,
+      });
+      const payload = (await response.json().catch(() => null)) as AnalysisJobStatus | null;
+      if (!response.ok || !payload) {
+        throw new Error(readApiError(payload, response.status));
+      }
+      setProgress(payload.progress);
+      if (payload.status === "completed" && payload.result) {
+        setResult(payload.result);
+        return;
+      }
+      if (payload.status === "failed") {
+        throw new Error(payload.error || "Analyse echouee.");
+      }
+      if (payload.status === "cancelled") {
+        throw new DOMException("Analyse annulee.", "AbortError");
+      }
+      await sleep(900);
+    }
+  }
+
+  async function cancelAnalysis() {
+    abortRef.current?.abort();
+    if (analysisId && API_KEY) {
+      await fetch(`${API_URL}/api/ranking/jobs/${analysisId}`, {
+        method: "DELETE",
+        headers: { "X-API-Key": API_KEY },
+      }).catch(() => null);
+    }
+    setIsAnalyzing(false);
+    setProgress(0);
   }
 
   function resetForm() {
@@ -188,6 +255,7 @@ function App() {
     setResult(null);
     setError(null);
     setProgress(0);
+    setAnalysisId(null);
   }
 
   return (
@@ -218,7 +286,7 @@ function App() {
             icon={FileText}
             fileNames={jobFile ? [jobFile.name] : []}
             inputProps={{
-              accept: ".pdf,.docx,.txt,.md",
+              accept: ACCEPTED_EXTENSIONS,
               onChange: handleJobChange,
             }}
           />
@@ -228,7 +296,7 @@ function App() {
             icon={Files}
             fileNames={cvFiles.map((file) => file.name)}
             inputProps={{
-              accept: ".pdf,.docx,.txt,.md",
+              accept: ACCEPTED_EXTENSIONS,
               multiple: true,
               onChange: handleCvChange,
             }}
@@ -239,9 +307,9 @@ function App() {
               {isAnalyzing ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
               Analyser
             </button>
-            <button className="ghost-button" disabled={isAnalyzing} type="button" onClick={resetForm}>
+            <button className="ghost-button" type="button" onClick={isAnalyzing ? cancelAnalysis : resetForm}>
               <RotateCcw size={18} />
-              Reinitialiser
+              {isAnalyzing ? "Annuler" : "Reinitialiser"}
             </button>
           </div>
         </form>
@@ -640,6 +708,10 @@ function readNetworkError(caught: unknown) {
     return "API inaccessible. Verifiez que FastAPI est lance sur http://127.0.0.1:8002, puis rechargez la page.";
   }
   return caught instanceof Error ? caught.message : "Erreur inconnue pendant l'analyse.";
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 export default App;

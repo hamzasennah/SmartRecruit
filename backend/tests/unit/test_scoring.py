@@ -1,4 +1,4 @@
-from app.schemas.cv import Experience, Language, SkillSet, StructuredCV
+from app.schemas.cv import Education, Experience, Language, SkillSet, StructuredCV
 from app.schemas.job import ExperienceRequirement, LanguageRequirement, RequiredSkills, StructuredJobDescription
 from app.services.experience.duration_calculator import enrich_experience_durations
 from app.services.matching.experience_matcher import match_experience
@@ -256,11 +256,99 @@ def test_language_matching_does_not_mark_present_language_missing_when_level_is_
 
     assert result["matched"] == ["francais", "anglais"]
     assert result["missing"] == []
-    assert result["score"] == 100.0
+    assert result["score"] == 80.0
     assert result["details"]["below_required_level"] == [
         {"language": "francais", "candidate_rank": 4, "required_rank": 5},
         {"language": "anglais", "candidate_rank": 4, "required_rank": 5},
     ]
+
+
+def test_language_matching_scores_native_as_full_credit() -> None:
+    cv = StructuredCV(languages=[Language(language="English", normalized_level="native")])
+    job = StructuredJobDescription(
+        language_requirements=[LanguageRequirement(language="English", minimum_level="fluent")]
+    )
+
+    result = match_languages(cv, job)
+
+    assert result["score"] == 100.0
+    assert result["details"]["below_required_level"] == []
+
+
+def test_experience_matching_adds_dated_periods_and_explicit_durations() -> None:
+    cv = StructuredCV(
+        skills=SkillSet(technical=["python"]),
+        experiences=enrich_experience_durations(
+            [
+                Experience(
+                    job_title="Data Analyst",
+                    start_date="janvier 2021",
+                    end_date="decembre 2021",
+                    skills_used=["python"],
+                ),
+                Experience(
+                    job_title="Data Analyst",
+                    declared_duration="1 an",
+                    skills_used=["python"],
+                ),
+            ]
+        ),
+    )
+    job = StructuredJobDescription(
+        required_skills=RequiredSkills(mandatory=["python"]),
+        experience_requirements=ExperienceRequirement(
+            minimum_months=24,
+            preferred_job_titles=["data analyst"],
+        ),
+    )
+
+    result = match_experience(cv, job)
+
+    assert result["details"]["total_experience_months"] == 24
+    assert result["details"]["relevant_experience_months"] == 24
+    assert result["score"] == 100.0
+
+
+def test_education_unknown_required_level_does_not_auto_match() -> None:
+    from app.services.matching.education_matcher import match_education
+
+    cv = StructuredCV(education=[Education(degree="Master Data", normalized_level="master", field="data")])
+    job = StructuredJobDescription()
+    job.education_requirements.minimum_level = "niveau mystere"
+
+    result = match_education(cv, job)
+
+    assert result["score"] == 0.0
+    assert result["missing"] == ["niveau mystere"]
+    assert result["details"]["unknown_required_level"] is True
+
+
+def test_education_matching_uses_accepted_fields() -> None:
+    from app.services.matching.education_matcher import match_education
+
+    cv = StructuredCV(education=[Education(degree="Master Informatique", normalized_level="master", field="data")])
+    job = StructuredJobDescription()
+    job.education_requirements.minimum_level = "master"
+    job.education_requirements.accepted_fields = ["data"]
+
+    result = match_education(cv, job)
+
+    assert result["score"] == 100.0
+    assert result["matched"] == ["master", "data"]
+
+
+def test_certification_and_domain_matching_is_not_automatic() -> None:
+    from app.services.matching.certification_matcher import match_certifications_and_domains
+
+    cv = StructuredCV(certifications=["PL-300"])
+    job = StructuredJobDescription(certifications=["PL-300", "AZ-900"])
+    job.experience_requirements.required_domains = ["supply chain"]
+
+    result = match_certifications_and_domains(cv, job)
+
+    assert result["score"] == 25.0
+    assert result["matched"] == ["pl 300"]
+    assert result["missing"] == ["az 900", "supply chain"]
 
 
 def test_snowflake_azure_responsibility_rejects_generic_backend_database_evidence() -> None:

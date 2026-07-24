@@ -8,5 +8,7 @@ class AnalyzeJobPipeline:
         self._parser = parser
         self._extractor = JobExtractor(llm_client)
 
-    def run(self, path):
-        return self._extractor.extract(self._parser.extract(path, kind=DocumentKind.job))
+    def run(self, path, filename_override: str | None = None):
+        return self._extractor.extract(
+            self._parser.extract(path, kind=DocumentKind.job, filename_override=filename_override)
+        )

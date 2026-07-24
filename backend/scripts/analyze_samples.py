@@ -11,9 +11,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from scripts.render_result_report import render_report
-from app.schemas.document import DocumentKind
-from app.services.documents.docling_parser import DoclingParser
+from app.schemas.document import DocumentKind  # noqa: E402
+from app.services.documents.docling_parser import DoclingParser  # noqa: E402
+from scripts.render_result_report import render_report  # noqa: E402
 
 
 def main() -> None:
@@ -35,13 +35,18 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--json-output", default="result.json")
     parser.add_argument("--html-output", default="result_report.html")
+    parser.add_argument(
+        "--include-raw-text",
+        action="store_true",
+        help="Inclut le texte extrait complet dans le rapport local. Desactive par defaut pour proteger les CV.",
+    )
     args = parser.parse_args()
 
     job_path = _existing_path(args.job_file)
     cv_paths = _resolve_cv_paths(args.cv_file, args.cv_dir, job_path)
     result_path = BACKEND_ROOT / args.json_output
     report_path = BACKEND_ROOT / args.html_output
-    extracted_texts = _extract_input_texts(job_path, cv_paths)
+    extracted_texts = _extract_input_texts(job_path, cv_paths, include_raw_text=args.include_raw_text)
 
     print("Analyse en cours...")
     print(f"Fiche de poste: {job_path}")
@@ -68,7 +73,7 @@ def main() -> None:
             "Impossible de joindre FastAPI sur http://127.0.0.1:8002.\n"
             "Lance d'abord le backend dans un autre terminal:\n"
             "  cd C:\\Users\\pc\\SmartRecruit\\backend\n"
-            "  python -m uvicorn app.main:app --host 0.0.0.0 --port 8002"
+            "  python -m uvicorn app.main:app --host 127.0.0.1 --port 8002"
         ) from exc
 
     result_path.write_bytes(response.content)
@@ -118,7 +123,7 @@ def _resolve_cv_paths(cv_files: list[str] | None, cv_dirs: list[str] | None, job
     return unique_paths
 
 
-def _extract_input_texts(job_path: Path, cv_paths: list[Path]) -> list[dict]:
+def _extract_input_texts(job_path: Path, cv_paths: list[Path], include_raw_text: bool = False) -> list[dict]:
     parser = DoclingParser()
     documents = [
         ("Fiche de poste", parser.extract(job_path, kind=DocumentKind.job)),
@@ -130,7 +135,8 @@ def _extract_input_texts(job_path: Path, cv_paths: list[Path]) -> list[dict]:
             "label": label,
             "filename": document.filename,
             "char_count": document.char_count,
-            "text": document.text,
+            "text": document.text if include_raw_text else "",
+            "raw_text_included": include_raw_text,
             "sections": document.sections,
         }
         for label, document in documents

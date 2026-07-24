@@ -1,5 +1,4 @@
 import pytest
-
 from app.core.exceptions import OutputValidationError
 from app.services.extraction.output_validator import parse_json_payload
 

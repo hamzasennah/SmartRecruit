@@ -3,7 +3,15 @@ from functools import lru_cache
 
 from app.config import settings
 
-DEFAULT_WEIGHTS = {"technical_skills":0.35,"experience":0.30,"responsibilities":0.15,"education":0.10,"languages":0.05,"soft_skills":0.0}
+DEFAULT_WEIGHTS = {
+    "technical_skills": 0.33,
+    "experience": 0.28,
+    "responsibilities": 0.14,
+    "education": 0.10,
+    "languages": 0.05,
+    "certifications_domains": 0.10,
+    "soft_skills": 0.0,
+}
 
 
 @lru_cache(maxsize=1)

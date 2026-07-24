@@ -1,4 +1,5 @@
 from app.schemas.matching import CandidateMatch, CategoryScore, Evidence
+from app.services.matching.certification_matcher import match_certifications_and_domains
 from app.services.matching.education_matcher import match_education
 from app.services.matching.experience_matcher import match_experience
 from app.services.matching.language_matcher import match_languages
@@ -7,7 +8,6 @@ from app.services.matching.skill_matcher import match_skills, match_soft_skills
 from app.services.normalization.text_normalizer import normalize_text
 from app.services.scoring.explanation_builder import build_strengths, build_weaknesses
 from app.services.scoring.weights import load_scoring_weights
-
 
 DISPLAY_EVIDENCE_SECTIONS = {"experience", "experiences", "projects", "responsibilities", "skills"}
 MIN_DISPLAY_EVIDENCE_SCORE = 0.2
@@ -22,6 +22,7 @@ class ScoringEngine:
             "responsibilities": match_responsibilities(cv, job, retrieved_evidence),
             "education": match_education(cv, job),
             "languages": match_languages(cv, job),
+            "certifications_domains": match_certifications_and_domains(cv, job),
             "soft_skills": match_soft_skills(cv, job),
         }
         applicable_results = {

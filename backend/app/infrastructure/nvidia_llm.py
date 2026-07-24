@@ -11,7 +11,6 @@ from app.config import Settings
 from app.core.exceptions import ExternalServiceError, OutputValidationError
 from app.services.extraction.output_validator import parse_json_payload
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -26,6 +25,7 @@ class NvidiaLLMClient:
         retry_delay: float,
         max_tokens: int,
         temperature: float,
+        seed: int | None = 0,
     ) -> None:
         if not api_key:
             raise ExternalServiceError("NVIDIA_API_KEY est obligatoire pour appeler le modele NVIDIA.")
@@ -37,6 +37,7 @@ class NvidiaLLMClient:
         self.retry_delay = retry_delay
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.seed = seed
 
     def generate_json(self, prompt: str) -> dict[str, Any]:
         payload = {
@@ -52,8 +53,11 @@ class NvidiaLLMClient:
                 {"role": "user", "content": prompt},
             ],
             "temperature": self.temperature,
+            "top_p": 1,
             "max_tokens": self.max_tokens,
         }
+        if self.seed is not None:
+            payload["seed"] = self.seed
         response = self._post("/chat/completions", payload)
         try:
             content = response["choices"][0]["message"]["content"]
@@ -122,6 +126,7 @@ def get_llm_client(settings: Settings) -> NvidiaLLMClient:
         retry_delay=settings.llm_retry_delay,
         max_tokens=settings.llm_max_tokens,
         temperature=settings.llm_temperature,
+        seed=settings.llm_seed,
     )
 
 

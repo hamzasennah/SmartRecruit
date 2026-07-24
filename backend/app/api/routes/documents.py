@@ -1,32 +1,31 @@
-from pathlib import Path
+from typing import Annotated
+from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
-from app.config import settings
-from app.core.constants import SUPPORTED_EXTENSIONS
 from app.core.exceptions import DocumentParsingError
+from app.core.security import check_rate_limit, require_api_key
 from app.dependencies import get_document_parser
 from app.schemas.document import DocumentKind, DocumentText
+from app.services.documents.upload_manager import UploadPolicyError, cleanup_upload_dir, create_analysis_upload_dir, save_upload
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(
+    prefix="/documents",
+    tags=["documents"],
+    dependencies=[Depends(require_api_key), Depends(check_rate_limit)],
+)
 
 
 @router.post("/parse", response_model=DocumentText)
-async def parse_document(file: UploadFile = File(...), kind: DocumentKind = DocumentKind.unknown) -> DocumentText:
-    path = await _save_upload(file)
+async def parse_document(file: Annotated[UploadFile, File(...)], kind: DocumentKind = DocumentKind.unknown) -> DocumentText:
+    upload_dir = create_analysis_upload_dir(uuid4().hex)
     try:
-        return get_document_parser().extract(path, kind=kind)
+        upload = await save_upload(file, upload_dir, "document")
+        return get_document_parser().extract(upload.path, kind=kind, filename_override=upload.original_filename)
+    except UploadPolicyError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except DocumentParsingError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-async def _save_upload(file: UploadFile) -> Path:
-    suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in SUPPORTED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Format non supporte: {suffix}")
-    settings.upload_dir.mkdir(parents=True, exist_ok=True)
-    target = settings.upload_dir / Path(file.filename or f"upload{suffix}").name
-    content = await file.read()
-    target.write_bytes(content)
-    return target
+        raise HTTPException(status_code=400, detail="Document impossible a analyser.") from exc
+    finally:
+        cleanup_upload_dir(upload_dir)
 

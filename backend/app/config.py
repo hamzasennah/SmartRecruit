@@ -6,7 +6,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = BACKEND_ROOT.parent
 
@@ -69,7 +68,12 @@ class Settings:
 
     @property
     def llm_temperature(self) -> float:
-        return float(os.getenv("NVIDIA_TEMPERATURE", "0.1"))
+        return float(os.getenv("NVIDIA_TEMPERATURE", "0"))
+
+    @property
+    def llm_seed(self) -> int | None:
+        value = os.getenv("NVIDIA_SEED", "0").strip()
+        return int(value) if value else None
 
     @property
     def embedding_dimensions(self) -> int | None:
@@ -83,6 +87,56 @@ class Settings:
     @property
     def max_upload_mb(self) -> int:
         return int(os.getenv("MAX_UPLOAD_MB", "20"))
+
+    @property
+    def max_upload_bytes(self) -> int:
+        value = os.getenv("MAX_UPLOAD_BYTES", "").strip()
+        return int(value) if value else self.max_upload_mb * 1024 * 1024
+
+    @property
+    def max_total_upload_mb(self) -> int:
+        return int(os.getenv("MAX_TOTAL_UPLOAD_MB", "100"))
+
+    @property
+    def max_total_upload_bytes(self) -> int:
+        value = os.getenv("MAX_TOTAL_UPLOAD_BYTES", "").strip()
+        return int(value) if value else self.max_total_upload_mb * 1024 * 1024
+
+    @property
+    def max_cv_files(self) -> int:
+        return int(os.getenv("MAX_CV_FILES", "20"))
+
+    @property
+    def upload_chunk_bytes(self) -> int:
+        return int(os.getenv("UPLOAD_CHUNK_BYTES", str(1024 * 1024)))
+
+    @property
+    def smartrecruit_api_key(self) -> str:
+        return os.getenv("SMARTRECRUIT_API_KEY", "").strip()
+
+    @property
+    def rate_limit_requests(self) -> int:
+        return int(os.getenv("RATE_LIMIT_REQUESTS", "20"))
+
+    @property
+    def rate_limit_window_seconds(self) -> int:
+        return int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+
+    @property
+    def job_worker_count(self) -> int:
+        return int(os.getenv("JOB_WORKER_COUNT", "2"))
+
+    @property
+    def embedding_batch_size(self) -> int:
+        return int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
+
+    @property
+    def llm_input_char_limit(self) -> int:
+        return int(os.getenv("LLM_INPUT_CHAR_LIMIT", "12000"))
+
+    @property
+    def vector_backend(self) -> str:
+        return os.getenv("VECTOR_BACKEND", "pgvector").strip().lower()
 
 
 settings = Settings()

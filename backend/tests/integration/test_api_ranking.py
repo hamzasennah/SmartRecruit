@@ -1,10 +1,8 @@
 import os
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.main import app
-
+from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.skipif(
     os.getenv("SMARTRECRUIT_RUN_INTEGRATION") != "1",
@@ -13,6 +11,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_ranking_endpoint_with_text_uploads() -> None:
+    os.environ.setdefault("SMARTRECRUIT_API_KEY", "integration-test-key")
     files = [
         (
             "job_file",
@@ -36,7 +35,12 @@ def test_ranking_endpoint_with_text_uploads() -> None:
         ),
     ]
     with TestClient(app) as client:
-        response = client.post("/api/ranking/analyze", files=files, data={"top_k": "3"})
+        response = client.post(
+            "/api/ranking/analyze",
+            headers={"X-API-Key": os.environ["SMARTRECRUIT_API_KEY"]},
+            files=files,
+            data={"top_k": "3"},
+        )
 
     assert response.status_code == 200
     payload = response.json()

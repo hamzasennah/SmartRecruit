@@ -8,6 +8,6 @@ class AnalyzeCVPipeline:
         self._parser = parser
         self._extractor = CVExtractor(llm_client)
 
-    def run(self, path):
-        document = self._parser.extract(path, kind=DocumentKind.cv)
+    def run(self, path, filename_override: str | None = None):
+        document = self._parser.extract(path, kind=DocumentKind.cv, filename_override=filename_override)
         return document, self._extractor.extract(document)
