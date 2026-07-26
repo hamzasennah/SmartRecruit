@@ -1,3 +1,4 @@
+from app.schemas.cv import Experience, SkillSet, StructuredCV
 from app.schemas.document import DocumentText
 from app.schemas.job import RequiredSkills, StructuredJobDescription
 from app.services.extraction.cv_extractor import CVExtractor, enrich_cv_with_job_skill_evidence
@@ -171,11 +172,49 @@ def test_job_extractor_accepts_model_lists_returned_as_objects() -> None:
     assert job.required_skills.soft == ["autonomy", "leadership"]
     assert job.experience_requirements.minimum_months == 12
     assert job.experience_requirements.preferred_job_titles == ["Data analyst"]
-    assert job.experience_requirements.required_domains == ["Supply chain"]
+    assert job.experience_requirements.required_domains == []
     assert job.education_requirements.minimum_level == "master"
     assert job.education_requirements.accepted_fields == ["data"]
     assert [language.language for language in job.language_requirements] == ["francais", "anglais"]
     assert job.certifications == ["PL-300"]
+
+
+def test_job_extractor_drops_implicit_required_domains_from_llm() -> None:
+    text = """
+    Data analyst packaging tool (SPM)
+    Workstream BI/Data pour Supply Chain et transport.
+    Tools : Power BI, Excel, Snowflake et Azure.
+    """
+    document = DocumentText(filename="fiche_de_poste.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "job_title": "Data Analyst",
+        "experience_requirements": {
+            "required_domains": ["Supply chain", "Transport"],
+        },
+    }
+
+    job = JobExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert job.experience_requirements.required_domains == []
+
+
+def test_job_extractor_keeps_explicit_required_domains_from_text() -> None:
+    text = """
+    Data analyst packaging tool (SPM)
+    Required domain: Supply Chain.
+    Tools : Power BI, Excel, Snowflake et Azure.
+    """
+    document = DocumentText(filename="fiche_de_poste.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "job_title": "Data Analyst",
+        "experience_requirements": {
+            "required_domains": ["Supply Chain", "Transport"],
+        },
+    }
+
+    job = JobExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert job.experience_requirements.required_domains == ["supply chain"]
 
 
 def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experiences() -> None:
@@ -339,6 +378,27 @@ def test_cv_job_skill_enrichment_uses_raw_text_for_requested_skills_only() -> No
     assert "snowflake" not in cv.skills.technical
 
 
+def test_cv_job_skill_enrichment_removes_unverified_requested_llm_skills() -> None:
+    raw_text = """
+    Analyse KPI avancee avec Microsoft Excel.
+    """
+    cv = StructuredCV(
+        candidate_name="Candidate",
+        skills=SkillSet(technical=["Power BI", "Excel"], tools=[]),
+        experiences=[Experience(skills_used=["Power BI", "KPI"])],
+    )
+    job = StructuredJobDescription(
+        required_skills=RequiredSkills(mandatory=["Power BI", "Excel", "KPI"])
+    )
+
+    enrich_cv_with_job_skill_evidence(cv, raw_text, job)
+
+    candidate_skills = cv.skills.technical + cv.skills.tools + cv.experiences[0].skills_used
+    assert "power bi" not in candidate_skills
+    assert "excel" in candidate_skills
+    assert "kpi" in candidate_skills
+
+
 def test_cv_extractor_does_not_count_internships_as_professional_experience() -> None:
     document = DocumentText(filename="candidate.txt", text="CV Candidate", char_count=12)
     llm_payload = {
@@ -407,6 +467,37 @@ def test_cv_extractor_accepts_language_level_returned_by_model() -> None:
 
     assert cv.languages[0].language == "francais"
     assert cv.languages[0].normalized_level == "courant"
+
+
+def test_cv_extractor_overrides_unknown_llm_language_level_with_raw_text_evidence() -> None:
+    text = """
+    LANGUES
+    Arabe
+    Langue maternelle
+    anglais
+    Capacite professionnelle complete
+    Francais
+    Capacite professionnelle complete
+    """
+    document = DocumentText(filename="vertical-languages.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [],
+        "education": [],
+        "languages": [
+            {"language": "anglais", "normalized_level": "niveau non precise"},
+            {"language": "francais", "normalized_level": "niveau non precise"},
+        ],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert {(language.language, language.normalized_level) for language in cv.languages} == {
+        ("anglais", "professional"),
+        ("francais", "professional"),
+        ("arabe", "native"),
+    }
 
 
 def test_cv_extractor_accepts_education_years_returned_as_month_year_strings() -> None:

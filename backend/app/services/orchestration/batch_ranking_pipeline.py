@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.core.exceptions import ExternalServiceError
+from app.core.model_audit import model_call_context
 from app.schemas.ranking import RankingResponse
 from app.services.extraction.cv_extractor import enrich_cv_with_job_skill_evidence
 from app.services.orchestration.analyze_cv_pipeline import AnalyzeCVPipeline
@@ -28,7 +29,8 @@ class BatchRankingPipeline:
         self._vector_store.reset_namespace(namespace)
         try:
             job_file_path, job_filename = _path_and_filename(job_path)
-            job = self._job_pipeline.run(job_file_path, filename_override=job_filename)
+            with model_call_context(analysis_namespace=namespace, document_role="job", document_filename=job_filename):
+                job = self._job_pipeline.run(job_file_path, filename_override=job_filename)
             job_id = _create_job_record(self._vector_store, job_file_path, job_filename, job)
             matches, errors = [], []
             query = " ".join(
@@ -42,17 +44,23 @@ class BatchRankingPipeline:
             for cv_ref in cv_paths:
                 cv_path, cv_filename = _path_and_filename(cv_ref)
                 try:
-                    document, cv = self._cv_pipeline.run(cv_path, filename_override=cv_filename)
-                    enrich_cv_with_job_skill_evidence(cv, document.text, job)
-                    _create_resume_record(self._vector_store, cv_path, document, cv)
-                    self._indexer.index_sections(namespace, document.filename, document.sections)
-                    evidence = self._retriever.retrieve(
-                        namespace,
-                        query,
-                        top_k=top_k,
-                        filters={"document_id": document.filename},
-                    )
-                    matches.append((self._scoring.score_candidate(document.filename, cv, job, evidence), cv))
+                    with model_call_context(
+                        analysis_namespace=namespace,
+                        document_role="cv",
+                        document_filename=cv_filename,
+                        candidate_filename=cv_filename,
+                    ):
+                        document, cv = self._cv_pipeline.run(cv_path, filename_override=cv_filename)
+                        enrich_cv_with_job_skill_evidence(cv, document.text, job)
+                        _create_resume_record(self._vector_store, cv_path, document, cv)
+                        self._indexer.index_sections(namespace, document.filename, document.sections)
+                        evidence = self._retriever.retrieve(
+                            namespace,
+                            query,
+                            top_k=top_k,
+                            filters={"document_id": document.filename},
+                        )
+                        matches.append((self._scoring.score_candidate(document.filename, cv, job, evidence, document.sections), cv))
                 except ExternalServiceError:
                     raise
                 except Exception:

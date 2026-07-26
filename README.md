@@ -88,10 +88,9 @@ backend/
       scoring/               Score final et explications
       orchestration/         Pipeline complet fiche + CV + ranking
   scripts/
-    check_nvidia_api.py      Test reel NVIDIA API
-    analyze_samples.py       Analyse les PDF de SAMPLES et ouvre le rapport HTML
     free_port.py             Liberation controlee d'un port local
     initialize_databases.py  Application des migrations Alembic
+    render_result_report.py  Generateur de rapport HTML
     run_backend.sh           Lancement FastAPI
 
 frontend/
@@ -191,15 +190,6 @@ npm run dev
 
 Interface : `http://127.0.0.1:5173`
 
-## Verification NVIDIA API
-
-Cette commande fait de vrais appels a NVIDIA API : liste des modeles, generation JSON et embedding.
-
-```bash
-cd ~/SmartRecruit/backend
-python scripts/check_nvidia_api.py
-```
-
 ## Endpoints principaux
 
 `POST /api/ranking/analyze`
@@ -217,30 +207,6 @@ Cette route reste disponible pour compatibilite, mais l'interface utilise le mod
 - `DELETE /api/ranking/jobs/{analysis_id}` : demande l'annulation de l'analyse.
 
 Les uploads sont lus par chunks, limites par fichier, par nombre de CV et par taille cumulee, stockes sous noms aleatoires dans un dossier temporaire par analyse, puis supprimes en fin de traitement.
-
-## Test avec affichage automatique
-
-Quand PostgreSQL et FastAPI sont lances, cette commande analyse les fichiers dans `samples/`, genere `result.json`, cree `result_report.html`, puis ouvre automatiquement la page de resultats :
-
-```bash
-cd ~/SmartRecruit/backend
-python scripts/analyze_samples.py
-```
-
-Sous Windows PowerShell :
-
-```powershell
-cd C:\Users\pc\SmartRecruit\backend
-python scripts\analyze_samples.py
-```
-
-Par defaut, le script prend `samples/fiche_poste.pdf` comme fiche de poste et analyse tous les autres PDF du dossier comme CV. Le rapport HTML masque le texte brut extrait afin d'eviter d'exposer le contenu complet des CV. L'option `--include-raw-text` existe seulement pour du diagnostic local explicite.
-
-Pour utiliser un autre dossier de CV :
-
-```powershell
-python scripts\analyze_samples.py --job-file samples\fiche_poste.pdf --cv-dir "C:\chemin\vers\mes_cv"
-```
 
 ## Tests
 

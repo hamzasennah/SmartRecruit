@@ -24,6 +24,8 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 
 # Résultats générés localement
+backend/score_diagnostic*.json
+backend/score_diagnostic*.log
 backend/storage/documents/*
 backend/storage/results/*
 backend/storage/*.log

@@ -9,6 +9,7 @@ import httpx
 
 from app.config import Settings
 from app.core.exceptions import ExternalServiceError, OutputValidationError
+from app.core.model_audit import provider_request_id, record_model_call, utc_now_iso
 from app.services.extraction.output_validator import parse_json_payload
 
 logger = logging.getLogger(__name__)
@@ -58,26 +59,35 @@ class NvidiaLLMClient:
         }
         if self.seed is not None:
             payload["seed"] = self.seed
-        response = self._post("/chat/completions", payload)
-        try:
-            content = response["choices"][0]["message"]["content"]
-            return _loads_json(content)
-        except (KeyError, IndexError, TypeError) as exc:
-            raise ExternalServiceError("La reponse NVIDIA LLM n'a pas le format attendu.") from exc
-        except (json.JSONDecodeError, OutputValidationError) as exc:
-            finish_reason = _finish_reason(response)
-            preview = str(content)[-600:]
-            logger.error(
-                "JSON NVIDIA invalide. finish_reason=%s, longueur=%s, fin_reponse=%r",
-                finish_reason,
-                len(str(content)),
-                preview,
-            )
-            if finish_reason == "length":
-                raise ExternalServiceError(
-                    "La reponse NVIDIA LLM est tronquee. Augmentez NVIDIA_MAX_TOKENS dans .env."
-                ) from exc
-            raise ExternalServiceError("La reponse NVIDIA LLM n'est pas un JSON exploitable.") from exc
+        last_error: Exception | None = None
+        for parse_attempt in range(1, self.max_retries + 2):
+            response = self._post("/chat/completions", payload)
+            try:
+                content = response["choices"][0]["message"]["content"]
+                return _loads_json(content)
+            except (KeyError, IndexError, TypeError) as exc:
+                raise ExternalServiceError("La reponse NVIDIA LLM n'a pas le format attendu.") from exc
+            except (json.JSONDecodeError, OutputValidationError) as exc:
+                last_error = exc
+                finish_reason = _finish_reason(response)
+                preview = str(content)[-600:]
+                logger.error(
+                    "JSON NVIDIA invalide. tentative=%s/%s, finish_reason=%s, longueur=%s, fin_reponse=%r",
+                    parse_attempt,
+                    self.max_retries + 1,
+                    finish_reason,
+                    len(str(content)),
+                    preview,
+                )
+                if finish_reason == "length":
+                    raise ExternalServiceError(
+                        "La reponse NVIDIA LLM est tronquee. Augmentez NVIDIA_MAX_TOKENS dans .env."
+                    ) from exc
+                if parse_attempt <= self.max_retries:
+                    time.sleep(self.retry_delay)
+                    continue
+                break
+        raise ExternalServiceError("La reponse NVIDIA LLM n'est pas un JSON exploitable.") from last_error
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
@@ -88,8 +98,33 @@ class NvidiaLLMClient:
         }
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 2):
+            started_at = utc_now_iso()
+            started_perf = time.perf_counter()
+            response: httpx.Response | None = None
             try:
                 response = httpx.post(url, headers=headers, json=payload, timeout=self.timeout)
+                latency_ms = (time.perf_counter() - started_perf) * 1000
+                record_model_call(
+                    provider="nvidia",
+                    call_type="llm",
+                    method="POST",
+                    url=url,
+                    endpoint=path,
+                    model=str(payload.get("model", self.model)),
+                    started_at=started_at,
+                    latency_ms=latency_ms,
+                    attempt=attempt,
+                    max_attempts=self.max_retries + 1,
+                    status_code=response.status_code,
+                    provider_request_id_value=provider_request_id(response.headers),
+                    success=200 <= response.status_code < 400,
+                    input_summary={
+                        "message_count": len(payload.get("messages", [])),
+                        "max_tokens": payload.get("max_tokens"),
+                        "temperature": payload.get("temperature"),
+                        "seed": payload.get("seed"),
+                    },
+                )
                 if response.status_code in {429, 500, 502, 503, 504} and attempt <= self.max_retries:
                     logger.warning(
                         "NVIDIA LLM tentative %s/%s echouee avec HTTP %s.",
@@ -102,6 +137,29 @@ class NvidiaLLMClient:
                 response.raise_for_status()
                 return response.json()
             except (httpx.HTTPError, json.JSONDecodeError) as exc:
+                if response is None:
+                    latency_ms = (time.perf_counter() - started_perf) * 1000
+                    record_model_call(
+                        provider="nvidia",
+                        call_type="llm",
+                        method="POST",
+                        url=url,
+                        endpoint=path,
+                        model=str(payload.get("model", self.model)),
+                        started_at=started_at,
+                        latency_ms=latency_ms,
+                        attempt=attempt,
+                        max_attempts=self.max_retries + 1,
+                        success=False,
+                        error_type=type(exc).__name__,
+                        error_message=str(exc),
+                        input_summary={
+                            "message_count": len(payload.get("messages", [])),
+                            "max_tokens": payload.get("max_tokens"),
+                            "temperature": payload.get("temperature"),
+                            "seed": payload.get("seed"),
+                        },
+                    )
                 last_error = exc
                 if attempt <= self.max_retries:
                     logger.warning(

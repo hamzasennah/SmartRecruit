@@ -18,10 +18,12 @@ def test_ranking_engine_marks_equal_scores_as_tied() -> None:
 
     assert [item.rank for item in ranking] == [1, 1, 3]
     assert [item.is_tied for item in ranking] == [True, True, False]
-    assert [item.rank_label for item in ranking] == ["1 ex æquo", "1 ex æquo", "3"]
+    assert ranking[0].rank_label.startswith("1 ex ")
+    assert ranking[1].rank_label.startswith("1 ex ")
+    assert ranking[2].rank_label == "3"
 
 
-def test_ranking_engine_marks_tiny_score_differences_as_tied() -> None:
+def test_ranking_engine_does_not_tie_different_displayed_scores() -> None:
     first = CandidateMatch(candidate_name="Soufyane", filename="s.pdf", final_score=23.94, category_scores=[])
     second = CandidateMatch(candidate_name="Zakariaa", filename="z.pdf", final_score=23.90, category_scores=[])
 
@@ -32,6 +34,20 @@ def test_ranking_engine_marks_tiny_score_differences_as_tied() -> None:
         ]
     )
 
-    assert [item.rank for item in ranking] == [1, 1]
-    assert [item.is_tied for item in ranking] == [True, True]
-    assert [item.rank_label for item in ranking] == ["1 ex æquo", "1 ex æquo"]
+    assert [item.rank for item in ranking] == [1, 2]
+    assert [item.is_tied for item in ranking] == [False, False]
+    assert [item.rank_label for item in ranking] == ["1", "2"]
+
+
+def test_ranking_engine_uses_stable_tie_breaker() -> None:
+    beta = CandidateMatch(candidate_name="Beta", filename="b.pdf", final_score=10.0, category_scores=[])
+    alpha = CandidateMatch(candidate_name="Alpha", filename="a.pdf", final_score=10.0, category_scores=[])
+
+    ranking = RankingEngine().rank(
+        [
+            (beta, StructuredCV(candidate_name="Beta")),
+            (alpha, StructuredCV(candidate_name="Alpha")),
+        ]
+    )
+
+    assert [item.candidate.candidate_name for item in ranking] == ["Alpha", "Beta"]

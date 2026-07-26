@@ -1,0 +1,2495 @@
+\documentclass[12pt,a4paper,oneside]{book}
+
+\usepackage[utf-8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{array}
+
+% Geometry
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+% Code listings
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.95}
+
+\lstset{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegray},
+    keywordstyle=\color{codepurple},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codegreen},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=4,
+    language=Python,
+    frame=single,
+    framesep=5pt
+}
+
+% Headers
+\pagestyle{fancy}
+\fancyhead[L]{SmartRecruit}
+\fancyhead[R]{\thepage}
+\fancyfoot[C]{}
+
+% Hyperref
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=blue,
+    urlcolor=blue,
+    pdftitle={SmartRecruit - Documentation Complète},
+    pdfauthor={SmartRecruit Team}
+}
+
+% Title page
+\title{\textbf{SmartRecruit}\\Système intelligent de classement de CV avec RAG explicable}
+\author{Documentation technique complète}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\clearpage
+
+% ============================================================================
+% PARTIE 1: INTRODUCTION NARRATIVE
+% ============================================================================
+
+\chapter{Introduction narrative : Le projet SmartRecruit}
+
+\section{Contexte et problème}
+
+Recruter les bons candidats est un défi majeur pour les entreprises. Le processus traditionnel de sélection de CV est long, fastidieux et sujet à des biais inconscients. Les recruteurs doivent manuellement :
+
+\begin{itemize}
+    \item Lire des dizaines ou centaines de CV ;
+    \item Extraire les informations pertinentes (compétences, expérience, formation) ;
+    \item Évaluer chaque candidat par rapport aux critères du poste ;
+    \item Justifier leur classement par des arguments objectifs ;
+    \item Gérer les demandes de traçabilité et de transparence.
+\end{itemize}
+
+Cette approche est peu scalable, coûteuse en temps, et manque de transparence auprès des candidats : ``pourquoi n'ai-je pas été classé ?''
+
+\section{La solution : SmartRecruit}
+
+SmartRecruit offre une plateforme automatisée qui :
+
+\begin{itemize}
+    \item Extrait et structure automatiquement les données d'une fiche de poste et de CV (PDF, DOCX, TXT, Markdown) ;
+    \item Utilise un modèle de langage (LLM) NVIDIA pour interpréter le contenu de manière sémantique ;
+    \item Normalise les compétences, formations, langues et intitulés de poste via des règles métier versionnées ;
+    \item Construit une base de données vectorielle des passages de CV pertinents via PostgreSQL/pgvector ;
+    \item Recherche sémantiquement les preuves les plus proches de la fiche de poste ;
+    \item Calcule un score explicable par catégories (compétences, responsabilités, langues, certifications, formation, expérience) ;
+    \item Classe les candidats et expose les forces, faiblesses et preuves textuelles justifiant le classement ;
+    \item Offre une interface web interactive pour visualiser les résultats en temps réel.
+\end{itemize}
+
+\subsection{Principes fondamentaux}
+
+SmartRecruit repose sur trois principes clés :
+
+\begin{enumerate}
+    \item \textbf{Explicabilité} : Chaque score doit être justifiable par des passages textuels du CV et de la fiche de poste. Les preuves (evidence) sont affichées pour permettre aux recruteurs de valider la décision.
+    
+    \item \textbf{Reproductibilité} : À chaque nouvelle analyse, les documents sont relus intégralement. Aucun cache de résultat n'est réutilisé. Les paramètres IA (température, seed, hyperparamètres) sont figés pour assurer la consistance des résultats.
+    
+    \item \textbf{Sécurité et confidentialité} : Les données sensibles (détails de CV, informations personnelles) sont protégées via authentification par clé API, rate limiting, quotas d'upload, et stockage temporaire avec nettoyage garanti. Les logs ne sauvegardent pas le contenu brut des documents.
+\end{enumerate}
+
+\section{Architecture générale}
+
+SmartRecruit est composé de trois grandes parties :
+
+\subsection{Backend FastAPI}
+
+Le backend est une API Python/FastAPI qui orchestre le pipeline d'analyse complet :
+
+\begin{itemize}
+    \item Endpoints RESTful pour upload, parsing et ranking ;
+    \item Authentification par clé API et rate limiting ;
+    \item Pipeline de traitement multi-étapes (extraction, normalisation, matching, scoring, classement) ;
+    \item Stockage persistant en PostgreSQL avec support vectoriel pgvector ;
+    \item Intégration avec l'API NVIDIA pour LLM et embeddings ;
+    \item Logging structuré avec traçabilité et respect de la confidentialité.
+\end{itemize}
+
+\subsection{Frontend React}
+
+L'interface utilisateur est construite avec React 18 et Vite pour une expérience interactive :
+
+\begin{itemize}
+    \item Upload drag-and-drop de fichiers PDF/DOCX ;
+    \item Affichage en temps réel de la progression de l'analyse ;
+    \item Visualisation des résultats détaillés (scores, forces, faiblesses, preuves) ;
+    \item Masquage automatique des données sensibles (emails, téléphones, URLs) ;
+    \item Design responsif et accessible.
+\end{itemize}
+
+\subsection{Pipeline de traitement}
+
+Le cœur du système est un pipeline multi-étapes qui transforme des documents bruts en classement explicable :
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\toprule
+\textbf{Étape} & \textbf{Description} \\
+\midrule
+Extraction & Lecture du PDF/DOCX/TXT, extraction du texte brut \\
+Structuration LLM & LLM NVIDIA transforme le texte en JSON structuré \\
+Normalisation & Standardisation des compétences, formations, langues \\
+Vectorisation & Segmentation en chunks, conversion en embeddings \\
+Recherche sémantique & Requête vectorielle pour trouver preuves pertinentes \\
+Matching & Comparaison candidat vs fiche de poste \\
+Scoring & Calcul de score par catégories \\
+Classement & Tri et ranking final avec explications \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Flux de données}
+
+Voici comment les données circulent dans le système :
+
+\begin{enumerate}
+    \item L'utilisateur upload une fiche de poste (PDF) et des CV (PDF/DOCX/etc.) via l'interface web ;
+    \item Le frontend envoie les fichiers au backend via l'endpoint \texttt{POST /api/ranking/jobs} ;
+    \item Le backend valide les uploads (taille, extension, quotas) et crée un dossier temporaire par analyse ;
+    \item \textbf{Phase extraction} : Extraction du texte brut des documents via PyMuPDF ou python-docx ;
+    \item \textbf{Phase structuration} : Appels au LLM NVIDIA pour obtenir JSON structuré (job, cv) ;
+    \item \textbf{Phase normalisation} : Normalisation des valeurs extraites via règles métier (domain\_rules.json, etc.) ;
+    \item \textbf{Phase vectorisation} : Segmentation des CV en chunks, conversion en embeddings via NVIDIA ;
+    \item \textbf{Phase stockage} : Stockage des embeddings dans PostgreSQL/pgvector avec namespace par analyse ;
+    \item \textbf{Phase retrieval} : Recherche sémantique des preuves (passages CV) proches de chaque critère du poste ;
+    \item \textbf{Phase matching} : Comparaison candidat vs fiche pour chaque catégorie (skills, responsibilities, languages, etc.) ;
+    \item \textbf{Phase scoring} : Calcul du score final avec redistribution des poids selon critères présents ;
+    \item \textbf{Phase ranking} : Classement des candidats par score décroissant ;
+    \item Les résultats sont retournés au frontend, stockés en PostgreSQL, puis le namespace vectoriel est nettoyé.
+\end{enumerate}
+
+\newpage
+
+% ============================================================================
+% PARTIE 2: VUE D'ENSEMBLE DE L'ARCHITECTURE
+% ============================================================================
+
+\chapter{Vue d'ensemble de l'architecture}
+
+\section{Structure des répertoires}
+
+L'arborescence du projet est organisée de manière à séparer clairement les responsabilités :
+
+\begin{lstlisting}[language=bash]
+SmartRecruit/
+├── backend/                      # Backend FastAPI
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py              # Point d'entrée FastAPI
+│   │   ├── config.py            # Configuration (.env)
+│   │   ├── dependencies.py       # Injection de dépendances
+│   │   ├── api/
+│   │   │   └── routes/          # Endpoints API
+│   │   ├── core/                # Code central (exceptions, logging, security)
+│   │   ├── data/                # Données statiques (rules JSON)
+│   │   ├── database/            # SQLAlchemy models et session
+│   │   ├── infrastructure/      # Clients externes (NVIDIA, PostgreSQL)
+│   │   ├── schemas/             # Modèles Pydantic
+│   │   └── services/            # Logique métier organisée par domaine
+│   ├── alembic/                 # Migrations de base de données
+│   ├── scripts/                 # Utilitaires (migration, port, etc.)
+│   ├── tests/                   # Suites de tests
+│   ├── requirements.txt
+│   ├── requirements-dev.txt
+│   ├── docker-compose.yml
+│   └── alembic.ini
+├── frontend/                     # Frontend React/Vite
+│   ├── src/
+│   │   ├── App.tsx              # Composant racine
+│   │   ├── main.tsx             # Point d'entrée
+│   │   ├── styles.css           # Styles globaux
+│   │   ├── validation.ts        # Validation côté client
+│   │   └── ...
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tsconfig.json
+├── docs/                         # Documentation
+├── pyproject.toml               # Configuration pytest/mypy/ruff
+└── README.md                    # Documentation principale
+\end{lstlisting}
+
+\section{Composants principaux}
+
+\subsection{Backend FastAPI (app/)}
+
+\begin{description}
+    \item[main.py] Point d'entrée FastAPI. Enregistre les routes, configure CORS, ajoute les middlewares (logging, contexte requête, gestion d'erreurs).
+    
+    \item[config.py] Gestionnaire de configuration. Lit les variables d'environnement (.env) et expose les paramètres de l'app (clés API, URLs, limites).
+    
+    \item[dependencies.py] Injection de dépendances FastAPI. Fournit les instances des clients NVIDIA, parseurs, pipelines, etc.
+    
+    \item[api/routes/] Routes FastAPI organisées par domaine :
+    \begin{itemize}
+        \item health.py : Vérification de santé de l'application
+        \item documents.py : Parsing et extraction de documents
+        \item ranking.py : Endpoints principaux d'analyse et classement
+    \end{itemize}
+\end{description}
+
+\subsection{Core (app/core/)}
+
+Fonctionnalités transversales :
+
+\begin{description}
+    \item[exceptions.py] Hiérarchie d'exceptions personnalisées (DocumentParsingError, ExternalServiceError, etc.).
+    
+    \item[security.py] Authentification par clé API, rate limiting en mémoire, gestion des quotas.
+    
+    \item[logging\_config.py] Configuration du logging structuré avec traçabilité par request ID et analysis ID.
+    
+    \item[model\_audit.py] Context manager pour audit des appels IA (stockage des prompts, réponses, durée).
+    
+    \item[constants.py] Constantes globales (extensions supportées, limites, etc.).
+    
+    \item[request\_context.py] Contexte de requête pour propager l'analysis ID dans les logs.
+\end{description}
+
+\subsection{Database (app/database/)}
+
+Accès aux données PostgreSQL :
+
+\begin{description}
+    \item[models.py] Modèles SQLAlchemy (jobs, resumes, analyses, vector\_chunks).
+    
+    \item[session.py] Factory de session SQLAlchemy avec gestion du pool de connexions.
+\end{description}
+
+\subsection{Infrastructure (app/infrastructure/)}
+
+Clients pour services externes :
+
+\begin{description}
+    \item[nvidia\_llm.py] Client pour l'API LLM NVIDIA (appels /chat/completions).
+    
+    \item[nvidia\_embeddings.py] Client pour l'API embeddings NVIDIA.
+    
+    \item[postgres\_vector\_store.py] Store vectoriel PostgreSQL/pgvector (stockage, recherche, cleanup).
+\end{description}
+
+\subsection{Services (app/services/)}
+
+Logique métier organisée par domaine fonctionnel :
+
+\begin{description}
+    \item[documents/] Parsing et segmentation de documents PDF/DOCX.
+    
+    \item[extraction/] Extraction structurée via LLM (CV, fiche de poste).
+    
+    \item[normalization/] Normalisation des valeurs extraites.
+    
+    \item[experience/] Calcul de durée et pertinence expérience.
+    
+    \item[matching/] Comparaison candidat vs fiche par catégories.
+    
+    \item[scoring/] Calcul du score final et explications.
+    
+    \item[retrieval/] Chunking, vectorisation, recherche sémantique.
+    
+    \item[ranking/] Classement et tri des candidats.
+    
+    \item[orchestration/] Pipelines complets (batch ranking, job management).
+\end{description}
+
+\subsection{Frontend React (frontend/src/)}
+
+Interface utilisateur interactive :
+
+\begin{description}
+    \item[App.tsx] Composant racine. Gère l'état global (upload, progression, résultats).
+    
+    \item[validation.ts] Validations côté client (taille fichiers, formats, etc.).
+    
+    \item[styles.css] Styles CSS globaux avec design responsif.
+\end{description}
+
+\section{Flux d'exécution simplifié}
+
+\begin{enumerate}
+    \item Client upload des fichiers et clique sur ``Analyser''
+    \item Frontend appelle \texttt{POST /api/ranking/jobs} avec les fichiers
+    \item Backend crée un dossier temporaire et lance le pipeline dans un thread worker
+    \item Frontend poll \texttt{GET /api/ranking/jobs/{analysis\_id}} pour suivre la progression
+    \item Pipeline exécute les étapes : extraction → structuration → normalisation → vectorisation → retrieval → matching → scoring → ranking
+    \item Résultats retournés au frontend et affichés
+    \item Dossier temporaire nettoyé, namespace vectoriel supprimé
+\end{enumerate}
+
+\newpage
+
+% ============================================================================
+% PARTIE 3: DOCUMENTATION DÉTAILLÉE FICHIER PAR FICHIER
+% ============================================================================
+
+\chapter{Documentation détaillée par domaine}
+
+% ============================================
+% BACKEND - CONFIGURATION ET POINT D'ENTRÉE
+% ============================================
+
+\section{Backend - Configuration et Point d'Entrée (app/)}
+
+\subsection{main.py}
+
+\subsubsection{Rôle exact}
+
+Fichier de point d'entrée FastAPI. Crée l'instance FastAPI, configure les middlewares (CORS, logging, gestion de contexte), enregistre les routes et initialise les répertoires temporaires.
+
+\subsubsection{Place dans le flux global}
+
+Execuité au démarrage du serveur. C'est le point d'entrée pour toutes les requêtes HTTP. Les requêtes entrantes passent par les middlewares, puis par les routes enregistrées (health, documents, ranking).
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+# Création de l'instance FastAPI
+app = FastAPI(title=..., version="0.1.0", description=...)
+
+# Ajout de CORS pour autoriser les requêtes du frontend
+app.add_middleware(CORSMiddleware, allow_origins=..., ...)
+
+# Middleware personnalisé pour propagation du request ID
+@app.middleware("http")
+async def request_id_middleware(request, call_next):
+    # Génère ou récupère un X-Request-ID
+    # Le propage dans le contexte (pour logging)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+# Enregistrement des routes
+app.include_router(health.router, ...)
+app.include_router(documents.router, ...)
+app.include_router(ranking.router, ...)
+
+# Endpoint racine
+@app.get("/")
+def root():
+    return {"message": "...", "health": "/api/health", "docs": "/docs"}
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Middleware pour contexte requête} : Le X-Request-ID est propagé dans tous les logs pour tracer chaque requête. Cela permet de déboguer facilement les problèmes en production.
+    
+    \item \textbf{CORS configuré} : Autorise les requêtes du frontend (cross-origin). Les origines autorisées sont lues depuis l'env pour flexibilité.
+    
+    \item \textbf{Routes séparées par domaine} : Chaque module de routes (health, documents, ranking) est enregistré séparément pour clarté et maintenabilité.
+    
+    \item \textbf{Endpoint racine informatif} : Retourne des URLs utiles pour aider au débogage et à l'intégration.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Imports : \texttt{health}, \texttt{documents}, \texttt{ranking} (modules de routes)
+    \item Communique avec : Tous les clients HTTP (frontend, scripts de test)
+    \item Utilise : Configuration (settings), contexte requête
+\end{itemize}
+
+\subsection{config.py}
+
+\subsubsection{Rôle exact}
+
+Gestionnaire centralisé de la configuration. Lit les variables d'environnement (.env) via Pydantic BaseSettings et expose les paramètres de l'application sous forme d'objets typés.
+
+\subsubsection{Place dans le flux global}
+
+Chargé au démarrage du processus Python. Les modules dépendants importent les \texttt{settings} pour accéder à la configuration. Chaque variable d'env est typée et validée.
+
+\subsubsection{Contenu principal}
+
+Configuration pour :
+\begin{itemize}
+    \item \textbf{NVIDIA API} : Clé API, URLs (LLM et embeddings), timeouts, retry policy, température, seed, max tokens
+    \item \textbf{Base de données} : URL PostgreSQL
+    \item \textbf{Upload} : Limites de taille (par fichier, cumulée, nombre de CV)
+    \item \textbf{Sécurité} : Clé API SmartRecruit, rate limiting
+    \item \textbf{Workers} : Nombre de threads pour analyses parallèles
+    \item \textbf{Frontend} : Variables exposées via Vite
+\end{itemize}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Pydantic BaseSettings} : Validation automatique des types et des valeurs. Les erreurs de configuration sont détectées au démarrage, pas à l'utilisation.
+    
+    \item \textbf{Variables d'environnement} : Permet de déployer sans modifier le code. Clés API sensibles ne sont jamais en dur.
+    
+    \item \textbf{Valeurs par défaut} : Certains paramètres ont des valeurs par défaut raisonnables. Les clés API obligatoires lèvent une erreur si manquantes.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : Fichier .env (non versionnés)
+    \item Utilisé par : Tous les modules qui ont besoin de configuration
+\end{itemize}
+
+\subsection{dependencies.py}
+
+\subsubsection{Rôle exact}
+
+Injection de dépendances FastAPI. Fournit les instances des composants (clients NVIDIA, parseurs, pipelines, etc.) aux routes et services via les dépendances FastAPI.
+
+\subsubsection{Place dans le flux global}
+
+Appelé automatiquement par FastAPI quand une route a besoin d'une dépendance. Les dépendances sont créées une fois et réutilisées (par défaut).
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+from app.infrastructure.nvidia_embeddings import get_embedding_client
+from app.infrastructure.nvidia_llm import get_llm_client
+
+def get_document_parser():
+    """Retourne le parseur de documents"""
+    return get_parser()
+
+def get_batch_ranking_pipeline():
+    """Retourne le pipeline de ranking complet"""
+    llm_client = get_llm_client()
+    embedding_client = get_embedding_client()
+    vector_store = get_vector_store()
+    parser = get_document_parser()
+    return BatchRankingPipeline(parser, llm_client, embedding_client, vector_store)
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Injection de dépendances} : Testable facilement en mockant les dépendances. Découle les composants les uns des autres.
+    
+    \item \textbf{Dépendances réutilisées} : Les instances sont réutilisées par défaut (économise les ressources), mais peuvent être modifiées pour être créées à chaque fois si nécessaire.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : infrastructure (NVIDIA, PostgreSQL)
+    \item Utilisé par : Routes FastAPI
+\end{itemize}
+
+\newpage
+
+\section{Backend - Routes API (app/api/routes/)}
+
+\subsection{health.py}
+
+\subsubsection{Rôle exact}
+
+Endpoint de santé de l'application. Vérifie que l'application répond et que les dépendances critiques (base de données, NVIDIA API) sont accessibles.
+
+\subsubsection{Place dans le flux global}
+
+Route accessible à tout moment, sans authentification. Utilisée par les scripts de monitoring, les load balancers, ou les utilisateurs pour vérifier l'état du service.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+@router.get("/health", response_model=dict)
+async def health_check():
+    """Vérification de santé basique"""
+    return {"status": "ok"}
+
+@router.get("/health/deep", response_model=dict)
+async def deep_health_check():
+    """Vérifie les dépendances externes"""
+    # Vérification PostgreSQL
+    # Vérification NVIDIA API
+    # Retour du statut global
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Deux endpoints} : /health est rapide (basique), /health/deep fait des appels réseaux (plus complet mais peut être plus lent).
+    
+    \item \textbf{Pas d'authentification} : Le health check doit être accessible pour permettre aux outils de monitoring de vérifier l'état du service.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Communique avec : Base de données, NVIDIA API
+    \item Utilisé par : Monitoring, load balancers, utilisateurs
+\end{itemize}
+
+\subsection{documents.py}
+
+\subsubsection{Rôle exact}
+
+Endpoint pour extraction et parsing de documents individuels. Accepte un fichier (PDF, DOCX, TXT, Markdown) et retourne le texte structuré extrait.
+
+\subsubsection{Place dans le flux global}
+
+Route optionnelle, accessible avec authentification. Peut être utilisée pour tester l'extraction avant d'utiliser le ranking complet. Utile pour déboguer les problèmes de parsing.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+@router.post("/parse", response_model=DocumentText)
+async def parse_document(
+    file: UploadFile,
+    kind: DocumentKind = DocumentKind.unknown
+) -> DocumentText:
+    """
+    Parse un document et retourne le texte structuré.
+    
+    kind: Type de document (job, cv, unknown)
+    """
+    upload_dir = create_analysis_upload_dir(uuid4().hex)
+    try:
+        upload = await save_upload(file, upload_dir, "document")
+        parser = get_document_parser()
+        return parser.extract(
+            upload.path,
+            kind=kind,
+            filename_override=upload.original_filename
+        )
+    finally:
+        cleanup_upload_dir(upload_dir)
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Endpoint séparé} : Permet de tester le parsing indépendamment du scoring complet.
+    
+    \item \textbf{Kind optionnel} : Le type de document peut être spécifié pour optimiser l'extraction (sinon, détection automatique).
+    
+    \item \textbf{Cleanup en finally} : Le dossier temporaire est toujours nettoyé, même en cas d'erreur.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : get\_document\_parser() (injection)
+    \item Communique avec : Upload manager, parser
+    \item Utilisé par : Frontend, scripts de test
+\end{itemize}
+
+\subsection{ranking.py}
+
+\subsubsection{Rôle exact}
+
+Endpoint principal du système. Accepte une fiche de poste et des CV, et retourne le classement explicable avec scores et preuves.
+
+Offre deux modes :
+\begin{itemize}
+    \item \textbf{Synchrone} : \texttt{POST /api/ranking/analyze} - traite immédiatement et retourne le résultat
+    \item \textbf{Asynchrone} : \texttt{POST /api/ranking/jobs} - crée une analyse et retourne un ID, puis \texttt{GET /api/ranking/jobs/\{id\}} pour suivre
+\end{itemize}
+
+\subsubsection{Place dans le flux global}
+
+Point d'entrée principal du pipeline. Reçoit les fichiers utilisateur, valide les upload quotas, lance le pipeline dans un thread worker, stocke les résultats en base de données, puis expose le résultat.
+
+\subsubsection{Contenu principal}
+
+Route POST /analyze (synchrone) :
+\begin{lstlisting}[language=Python]
+@router.post("/analyze")
+async def analyze_ranking(
+    job_file: UploadFile,
+    cv_files: List[UploadFile],
+    top_k: int = 5
+) -> RankingResponse:
+    # Validation des uploads
+    # Sauvegarde des fichiers
+    # Appel du pipeline
+    # Retour du classement
+\end{lstlisting}
+
+Routes asynchrones :
+\begin{lstlisting}[language=Python]
+@router.post("/jobs")
+async def create_ranking_job(...) -> AnalysisJobCreated:
+    # Crée une analyse asynchrone
+    # Retourne analysis_id
+
+@router.get("/jobs/{analysis_id}")
+async def get_job_status(...) -> AnalysisJobStatus:
+    # Retourne l'état et la progression
+
+@router.delete("/jobs/{analysis_id}")
+async def cancel_job(...):
+    # Demande l'annulation
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Deux modes} : Synchrone pour tests/démonstration rapides, asynchrone pour production avec polling de progression.
+    
+    \item \textbf{Authentification obligatoire} : Toutes les routes nécessitent une clé API (sauf /health).
+    
+    \item \textbf{Rate limiting} : POST /analyze et POST /jobs sont limités pour éviter les abus. GET /jobs/{id} n'est pas limité pour permettre le polling libre.
+    
+    \item \textbf{Quotas d'upload} : Vérification du nombre de CV, taille par fichier, taille totale avant traitement.
+    
+    \item \textbf{Top-k configurable} : Permet à l'utilisateur de contrôler le nombre de preuves récupérées pour chaque candidat.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : get\_batch\_ranking\_pipeline() (injection)
+    \item Communique avec : Upload manager, vector store, database
+    \item Utilise : Job manager (pour gestion asynchrone), security (authentification et rate limiting)
+    \item Utilisé par : Frontend, clients API externes
+\end{itemize}
+
+\newpage
+
+% ============================================
+% BACKEND - INFRASTRUCTURE
+% ============================================
+
+\section{Backend - Infrastructure (app/infrastructure/)}
+
+\subsection{nvidia\_llm.py}
+
+\subsubsection{Rôle exact}
+
+Client pour l'API LLM NVIDIA. Encapsule les appels à l'endpoint \texttt{/chat/completions} avec gestion des erreurs, retry, timeout et audit des appels.
+
+\subsubsection{Place dans le flux global}
+
+Utilisé lors des phases d'extraction (structuration du texte en JSON) et d'enrichissement. Chaque appel LLM passe par ce client.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+def call_llm(
+    messages: List[Dict],
+    temperature: float = 0,
+    seed: int = 0,
+    max_tokens: int = 8192
+) -> str:
+    """
+    Appelle l'API LLM NVIDIA et retourne le texte généré.
+    
+    Paramètres:
+    - temperature: Contrôle la créativité (0 = déterministe)
+    - seed: Pour reproductibilité
+    - max_tokens: Limite de tokens en sortie
+    """
+    headers = {"Authorization": f"Bearer {NVIDIA_API_KEY}"}
+    payload = {
+        "model": NVIDIA_LLM_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "seed": seed,
+        "top_p": 1.0,
+        "max_tokens": max_tokens,
+    }
+    
+    # Appel avec retry
+    response = httpx.post(url, json=payload, headers=headers, timeout=...)
+    return response.json()["choices"][0]["message"]["content"]
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Temperature = 0} : Assure la déterministe des réponses. Deux appels identiques doivent retourner le même résultat.
+    
+    \item \textbf{Seed fixé} : Renforce la reproductibilité.
+    
+    \item \textbf{Top\_p = 1.0} : Désactive le nucleus sampling pour déterminisme.
+    
+    \item \textbf{Retry automatique} : En cas de timeout ou erreur transient, l'appel est réessayé plusieurs fois.
+    
+    \item \textbf{Audit} : Chaque appel est enregistré (prompt, réponse, durée) via model\_call\_context pour traçabilité et débogage.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : Configuration (clés API, timeouts)
+    \item Utilisé par : extraction (CV et job extractors)
+    \item Communique avec : NVIDIA API (externe)
+\end{itemize}
+
+\subsection{nvidia\_embeddings.py}
+
+\subsubsection{Rôle exact}
+
+Client pour l'API embeddings NVIDIA. Convertit des textes en vecteurs de dimension fixe (par défaut 1024).
+
+\subsubsection{Place dans le flux global}
+
+Utilisé lors de la vectorisation des chunks de CV et de la requête de recherche sémantique.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+def embed(texts: List[str]) -> List[List[float]]:
+    """
+    Convertit une liste de textes en embeddings.
+    
+    Retourne une liste de vecteurs (dim = EMBEDDING_DIMENSIONS).
+    """
+    payload = {
+        "model": NVIDIA_EMBEDDING_MODEL,
+        "input": texts,
+    }
+    
+    response = httpx.post(url, json=payload, headers=headers)
+    embeddings = [item["embedding"] for item in response.json()["data"]]
+    return embeddings
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Batch processing} : Peut accepter plusieurs textes en un seul appel pour efficacité.
+    
+    \item \textbf{Déterministe} : Même texte = même embedding (pas de randomness).
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : Configuration
+    \item Utilisé par : retrieval (section indexer, semantic retriever)
+    \item Communique avec : NVIDIA API (externe)
+\end{itemize}
+
+\subsection{postgres\_vector\_store.py}
+
+\subsubsection{Rôle exact}
+
+Abstraction du stockage vectoriel dans PostgreSQL avec extension pgvector. Gère le stockage des embeddings, la recherche par similarité vectorielle et le nettoyage des namespaces après analyse.
+
+\subsubsection{Place dans le flux global}
+
+Utilisé lors de l'indexation des chunks (stockage) et de la recherche sémantique (récupération).
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+class PostgresVectorStore:
+    def store_chunk(self, namespace, doc_id, section, chunk_index, text, embedding):
+        """Stocke un chunk vectorisé"""
+        # INSERT en table vector_chunks avec embedding::vector
+    
+    def search(self, namespace, query_embedding, top_k=5, filters=None):
+        """
+        Recherche sémantique par similarité cosinus.
+        
+        SELECT chunk_text, similarity
+        FROM vector_chunks
+        WHERE namespace = ...
+        ORDER BY embedding <=> query_embedding
+        LIMIT top_k
+        """
+    
+    def reset_namespace(self, namespace):
+        """Supprime tous les chunks d'un namespace"""
+        # DELETE FROM vector_chunks WHERE namespace = ...
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Namespace par analyse} : Isole les données entre analyses. Évite les pollutions croisées et permet un nettoyage facile.
+    
+    \item \textbf{Opérateur <>} : Utilise la similarité cosinus native de pgvector pour performance optimale.
+    
+    \item \textbf{Nettoyage en finally} : Garantit que les données ne restent pas en base après l'analyse.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : PostgreSQL avec extension pgvector
+    \item Utilisé par : retrieval (indexing, searching), orchestration (cleanup)
+    \item Stocke : Embeddings de chunks, avec métadonnées (namespace, doc\_id, section)
+\end{itemize}
+
+\newpage
+
+% ============================================
+% BACKEND - SERVICES - DOCUMENTS
+% ============================================
+
+\section{Backend - Services - Documents (app/services/documents/)}
+
+\subsection{docling\_parser.py}
+
+\subsubsection{Rôle exact}
+
+Parser universel pour documents PDF, DOCX, TXT et Markdown. Extrait le texte brut et structure le document en sections.
+
+\subsubsection{Place dans le flux global}
+
+Première étape du pipeline. Lit le fichier physique et retourne un objet \texttt{Document} avec texte brut et sections.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+class DoclingParser:
+    def extract(self, file_path, kind=DocumentKind.unknown, filename_override=None):
+        """
+        Extrait le texte et structure d'un document.
+        
+        Retourne DocumentText avec:
+        - filename
+        - text (texte brut complet)
+        - sections (liste de sections)
+        """
+        if file_path.suffix == ".pdf":
+            return self._parse_pdf(file_path)
+        elif file_path.suffix == ".docx":
+            return self._parse_docx(file_path)
+        else:
+            return self._parse_text(file_path)
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Support multi-format} : Accepte PDF (PyMuPDF), DOCX (python-docx) et texte brut.
+    
+    \item \textbf{Extraction de sections} : Identifie les sections du document (expérience, formation, skills, etc.) pour meilleure structure.
+    
+    \item \textbf{Gestion d'erreurs} : Lève DocumentParsingError si le fichier est corrompu ou non supporté.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : PyMuPDF (PDF), python-docx (DOCX)
+    \item Utilisé par : Routes (documents), pipelines (extraction)
+    \item Retourne : Objet DocumentText avec structure
+\end{itemize}
+
+\subsection{section\_segmenter.py}
+
+\subsubsection{Rôle exact}
+
+Découpe le document en sections logiques (expérience, formation, compétences, etc.) pour meilleure analyse ultérieure.
+
+\subsubsection{Place dans le flux global}
+
+Appelé après extraction brute. Segments le texte en sections avant chunking.
+
+\subsubsection{Contenu principal}
+
+Identifie les sections par pattern matching (mots-clés comme "Expérience", "Formation", "Compétences", etc.).
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Pattern matching} : Détecte les sections courantes même si la structure du CV varie.
+    
+    \item \textbf{Robustesse} : Traite les CVs mal formatés en groupant le texte non reconnu.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Utilisé par : Pipelines d'extraction
+    \item Retourne : Liste de sections structurées
+\end{itemize}
+
+\subsection{upload\_manager.py}
+
+\subsubsection{Rôle exact}
+
+Gestion des uploads de fichiers. Valide les uploads (extension, signature, taille), stocke les fichiers dans un dossier temporaire par analyse, et nettoie après utilisation.
+
+\subsubsection{Place dans le flux global}
+
+Appelé au début du pipeline par les routes API. Garantit que les fichiers uploadés sont valides et stockés de manière sécurisée.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+async def save_upload(file: UploadFile, upload_dir, doc_type):
+    """
+    Valide et sauvegarde un upload.
+    
+    Vérifications:
+    - Extension autorisée
+    - Signature de fichier (magic bytes)
+    - Taille
+    
+    Retourne Upload avec:
+    - path: chemin physique
+    - original_filename: nom original
+    - size_bytes: taille
+    """
+
+def ensure_cv_quota(cv_files):
+    """Vérifie que le nombre de CV <= MAX_CV_FILES"""
+
+def ensure_total_upload_quota(uploads):
+    """Vérifie que la taille totale <= MAX_TOTAL_UPLOAD_MB"""
+
+def cleanup_upload_dir(upload_dir):
+    """Supprime le dossier d'upload et tout son contenu"""
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Validation stricte} : Empêche l'upload de fichiers malveillants ou incorrects.
+    
+    \item \textbf{Noms UUID} : Les fichiers sont renommés en UUID pour éviter les collisions et les injections de chemin.
+    
+    \item \textbf{Dossier temporaire par analyse} : Isolé les uploads. Nettoyage en finally garantit pas de fuite.
+    
+    \item \textbf{Quotas appliqués} : Limite de taille par fichier, nombre de CV, taille totale.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : Configuration (MAX\_UPLOAD\_MB, etc.)
+    \item Utilisé par : Routes API
+    \item Communique avec : Système de fichiers
+\end{itemize}
+
+\newpage
+
+% Continue avec les autres services...
+
+\section{Backend - Services - Extraction (app/services/extraction/)}
+
+\subsection{cv\_extractor.py}
+
+\subsubsection{Rôle exact}
+
+Extraction structurée d'un CV via LLM NVIDIA. Reçoit le texte brut d'un CV et retourne un objet \texttt{StructuredCV} avec champs structurés (expérience, formation, compétences, langues, certifications, domaines).
+
+\subsubsection{Place dans le flux global}
+
+Deuxième étape après parsing brut. Transforme le texte en données structurées pour analyse ultérieure.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+def extract(text: str) -> StructuredCV:
+    """
+    Envoie le texte du CV au LLM avec un prompt strict.
+    
+    Prompt exige un JSON spécifique:
+    {
+        "candidate_name": "...",
+        "email": "...",
+        "phone": "...",
+        "experiences": [
+            {
+                "company": "...",
+                "title": "...",
+                "start_date": "YYYY-MM",
+                "end_date": "YYYY-MM",
+                "responsibilities": [...]
+            }
+        ],
+        "education": [...],
+        "skills": [...],
+        "languages": [...],
+        "certifications": [...]
+    }
+    """
+    
+    response = call_llm_with_strict_schema(text, CV_SCHEMA)
+    cv = StructuredCV.parse_obj(response)
+    return cv
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{LLM pour flexibilité} : Les CVs varient énormément. Un LLM est plus robuste que du parsing regex.
+    
+    \item \textbf{Schema strict} : Force le LLM à retourner un JSON valide via OpenAI schema mode ou prompt JSON.
+    
+    \item \textbf{Validation Pydantic} : S'assure que la sortie LLM respecte le schema attendu.
+    
+    \item \textbf{Déterministe} : Temperature=0, seed fixé pour reproductibilité.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : nvidia\_llm.py (appel LLM)
+    \item Utilisé par : Orchestration (batch ranking pipeline)
+    \item Retourne : StructuredCV (Pydantic model)
+\end{itemize}
+
+\subsection{job\_extractor.py}
+
+\subsubsection{Rôle exact}
+
+Extraction structurée d'une fiche de poste via LLM NVIDIA. Analogue à cv\_extractor mais pour fiche de poste.
+
+\subsubsection{Place dans le flux global}
+
+Parallèle à cv\_extractor. Processus similaire pour la fiche de poste.
+
+\subsubsection{Contenu principal}
+
+Retourne \texttt{StructuredJob} avec champs : job title, required skills (mandatory + preferred), responsibilities, required education, required languages, required domains.
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : nvidia\_llm.py
+    \item Utilisé par : Orchestration
+    \item Retourne : StructuredJob
+\end{itemize}
+
+\subsection{prompts.py}
+
+\subsubsection{Rôle exact}
+
+Définition des prompts envoyés au LLM NVIDIA. Contient les templates de prompts stricts pour extraction CV et fiche de poste.
+
+\subsubsection{Contenu principal}
+
+Prompts en français avec instructions strictes pour :
+\begin{itemize}
+    \item Extraction CV : Quels champs extraire, format JSON attendu, instructions de dates
+    \item Extraction fiche de poste : Quels critères extraire, distinction mandatory vs preferred
+\end{itemize}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Prompts en français} : Les documents sont en français, donc les prompts aussi pour meilleure compréhension par le LLM.
+    
+    \item \textbf{Instructions strictes} : Réduit les hallucinations et aléatoires du LLM.
+    
+    \item \textbf{Format JSON explicite} : Montre au LLM exactement quel JSON générer.
+\end{itemize}
+
+\subsection{output\_validator.py}
+
+\subsubsection{Rôle exact}
+
+Validation de la sortie LLM. S'assure que le JSON retourné est bien formé et respecte le schema attendu.
+
+\subsubsection{Contenu principal}
+
+\begin{itemize}
+    \item Parse le JSON retourné par LLM
+    \item Valide contre le schema Pydantic
+    \item Lève une erreur si format invalide
+\end{itemize}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Sécurité} : Empêche les JSON malformés de casser le pipeline.
+\end{itemize}
+
+\newpage
+
+\section{Backend - Services - Normalization (app/services/normalization/)}
+
+\subsection{Rôle général du dossier normalization}
+
+Normalisation des valeurs extraites par le LLM. Standardise les compétences, formations, langues, intitulés de poste, dates selon des règles métier versionnées.
+
+\subsubsection{Structure générale}
+
+Chaque fichier normalise une catégorie :
+\begin{itemize}
+    \item \texttt{skill\_normalizer.py} : Normalise les compétences (ex: "Python3.11" → "Python")
+    \item \texttt{education\_normalizer.py} : Normalise les niveaux de formation
+    \item \texttt{job\_title\_normalizer.py} : Normalise les intitulés de poste
+    \item \texttt{language\_normalizer.py} : Normalise les niveaux de langue
+    \item \texttt{date\_normalizer.py} : Normalise les dates (formats variés → YYYY-MM)
+    \item \texttt{text\_normalizer.py} : Normalisation textuelle générale (accents, casse, etc.)
+\end{itemize}
+
+\subsubsection{Stratégie de normalisation}
+
+Chaque normalizer charge un fichier de règles (en JSON dans app/data/) et utilise \texttt{@lru\_cache} pour performance :
+
+\begin{itemize}
+    \item \texttt{app/data/skill\_aliases.json} : Alias de compétences ("Py" → "Python")
+    \item \texttt{app/data/education\_levels.json} : Niveaux de formation
+    \item \texttt{app/data/job\_title\_aliases.json} : Alias d'intitulés
+    \item \texttt{app/data/language\_levels.json} : Niveaux de langues
+\end{itemize}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Règles externalisées} : Les alias et niveaux sont en JSON, pas en dur. Permet update sans redémarrage.
+    
+    \item \textbf{LRU cache} : Charger les fichiers une seule fois et réutiliser pour performance.
+    
+    \item \textbf{Normalisation stricte} : Assure que même le LLM peut être non-déterministe, les données normalisées sont stables.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : Fichiers JSON en app/data/
+    \item Utilisé par : Extraction (enrichissement post-LLM), matching
+    \item Retourne : Valeurs normalisées
+\end{itemize}
+
+\newpage
+
+\section{Backend - Services - Retrieval (app/services/retrieval/)}
+
+\subsection{section\_indexer.py}
+
+\subsubsection{Rôle exact}
+
+Indexation vectorielle des sections d'un CV. Découpe les sections en chunks, les vectorise via embedding NVIDIA, et les stocke dans PostgreSQL.
+
+\subsubsection{Place dans le flux global}
+
+Étape de vectorisation. Entre extraction/normalisation et retrieval/matching.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+def index_sections(namespace, document_id, sections):
+    """
+    Pour chaque section:
+    1. Découpe en chunks (par taille max)
+    2. Vectorise chaque chunk
+    3. Stocke en vector_chunks table
+    """
+    for section in sections:
+        chunks = chunk_builder.build(section.text)
+        embeddings = get_embedding_client().embed([c.text for c in chunks])
+        for chunk, emb in zip(chunks, embeddings):
+            vector_store.store_chunk(
+                namespace=namespace,
+                doc_id=document_id,
+                section=section.name,
+                chunk_index=chunk.index,
+                text=chunk.text,
+                embedding=emb
+            )
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Chunking} : Les sections peuvent être longues. Chunking améliore la granularité de recherche.
+    
+    \item \textbf{Batch embedding} : Appels par lots pour efficacité réseau.
+    
+    \item \textbf{Namespace isolation} : Chaque analyse a son namespace, évite les pollutions.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : nvidia\_embeddings.py, postgres\_vector\_store.py
+    \item Utilisé par : batch\_ranking\_pipeline
+    \item Consomme : Sections structurées
+\end{itemize}
+
+\subsection{semantic\_retriever.py}
+
+\subsubsection{Rôle exact}
+
+Recherche sémantique dans la base vectorielle. Prend une requête textuelle (critères du poste), la vectorise, et retourne les k passages les plus proches d'un CV.
+
+\subsubsection{Place dans le flux global}
+
+Étape de matching. Récupère les preuves (passages CV) pertinents pour chaque critère du poste.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+def retrieve(namespace, query_text, top_k=5, filters=None):
+    """
+    1. Vectorise la requête
+    2. Recherche dans pgvector par similarité cosinus
+    3. Retourne top_k passages les plus proches
+    """
+    query_emb = get_embedding_client().embed([query_text])[0]
+    results = vector_store.search(
+        namespace=namespace,
+        query_embedding=query_emb,
+        top_k=top_k,
+        filters=filters
+    )
+    return [Evidence(text=r.text, similarity=r.similarity) for r in results]
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Recherche sémantique} : Trouve les passages pertinents même sans correspondance exacte de mots-clés.
+    
+    \item \textbf{Filtrage par document} : Assure que les preuves viennent du bon CV.
+    
+    \item \textbf{Top-k configurable} : Équilibre entre couverture et performance.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : nvidia\_embeddings.py, postgres\_vector\_store.py
+    \item Utilisé par : batch\_ranking\_pipeline, scoring
+    \item Retourne : Liste d'Evidence avec passages textuels
+\end{itemize}
+
+\subsection{chunk\_builder.py}
+
+\subsubsection{Rôle exact}
+
+Découpe le texte en chunks de taille fixe (avec overlap). Optimise la granularité pour recherche vectorielle.
+
+\subsubsection{Contenu principal}
+
+\begin{itemize}
+    \item Découpe par taille (ex: 200 tokens)
+    \item Overlap (ex: 50 tokens) pour continuité entre chunks
+    \item Retourne une liste de Chunk avec offset et texte
+\end{itemize}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Overlap} : Évite de perdre du contexte à la limite entre chunks.
+    
+    \item \textbf{Taille fixe} : Cohérent avec la dimensionalité des embeddings.
+\end{itemize}
+
+\newpage
+
+\section{Backend - Services - Matching et Scoring (app/services/matching/ et app/services/scoring/)}
+
+\subsection{Stratégie générale}
+
+Le matching est organisé par catégorie de critères. Chaque catégorie (skills, responsibilities, education, languages, certifications, experience) a son matcher dédié.
+
+Le scoring utilise les résultats du matching pour calculer un score final par catégorie, puis agrège les catégories pour un score global.
+
+\subsection{app/services/matching/}
+
+\subsubsection{Fichiers et rôles}
+
+\begin{description}
+    \item[skill\_matcher.py] Compère les compétences du candidat avec celles requises
+    
+    \item[responsibility\_matcher.py] Évalue la couverture des responsabilités
+    
+    \item[education\_matcher.py] Valide la formation du candidat
+    
+    \item[language\_matcher.py] Vérifie les compétences linguistiques
+    
+    \item[certification\_matcher.py] Contrôle les certifications et domaines métier
+    
+    \item[experience\_matcher.py] Analyse la durée et pertinence d'expérience
+\end{description}
+
+\subsubsection{Exemple : skill\_matcher.py}
+
+\begin{lstlisting}[language=Python]
+def match_skills(cv: StructuredCV, job: StructuredJob, evidence: List[Evidence]):
+    """
+    Comparaison des compétences.
+    
+    Retourne:
+    - candidate_skills: compétences du candidat
+    - required_skills: compétences requises (mandatory + preferred)
+    - matched_skills: intersection
+    - score: pourcentage de couverture
+    """
+    
+    # Normalise les compétences
+    cv_skills = normalize_skills(cv.skills)
+    required = set(job.required_skills.mandatory + job.required_skills.preferred)
+    
+    # Trouve les correspondances
+    matched = cv_skills & required
+    
+    # Extrait les preuves pour les skills matched
+    evidences_for_skills = find_evidence_for(matched, evidence)
+    
+    score = len(matched) / len(required) if required else 0
+    
+    return SkillMatch(
+        candidate_skills=list(cv_skills),
+        required_skills=list(required),
+        matched_skills=list(matched),
+        evidence=evidences_for_skills,
+        score=score
+    )
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Matchers séparés} : Chaque catégorie a sa logique spécifique. Plus maintenable et testable.
+    
+    \item \textbf{Normalisation} : Utilise les normaliseurs pour comparer les valeurs de manière cohérente.
+    
+    \item \textbf{Preuves} : Chaque match est accompagné de passages textuels du CV justifiant le match.
+\end{itemize}
+
+\subsection{app/services/scoring/scoring\_engine.py}
+
+\subsubsection{Rôle exact}
+
+Calcul du score final d'un candidat. Agrège les scores des différentes catégories (skills, experience, education, languages, certifications, responsibilities) en un score global avec poids.
+
+\subsubsection{Place dans le flux global}
+
+Étape finale avant ranking. Reçoit les résultats du matching et produit un score global.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+def score_candidate(
+    candidate_id,
+    cv: StructuredCV,
+    job: StructuredJob,
+    evidence: List[Evidence],
+    sections
+) -> CandidateScore:
+    """
+    1. Appelle les matchers (skills, education, languages, etc.)
+    2. Récupère un score pour chaque catégorie
+    3. Charge les poids (app/data/scoring_weights.json)
+    4. Calcule le score global = moyenne pondérée des catégories
+    5. Identifie forces et faiblesses
+    6. Retourne CandidateScore avec détails
+    """
+    
+    # Matching par catégorie
+    skill_match = match_skills(cv, job, evidence)
+    edu_match = match_education(cv, job, evidence)
+    lang_match = match_languages(cv, job, evidence)
+    exp_match = match_experience(cv, job, evidence)
+    resp_match = match_responsibilities(cv, job, evidence)
+    cert_match = match_certifications(cv, job, evidence)
+    
+    # Charge les poids
+    weights = load_weights()  # {skills: 0.3, education: 0.2, ...}
+    
+    # Calcule le score global
+    # Redistribution des poids selon catégories présentes
+    total_score = weighted_average([
+        (skill_match.score, weights.get("skills", 0)),
+        (edu_match.score, weights.get("education", 0)),
+        ...
+    ])
+    
+    # Forces et faiblesses
+    strengths = identify_strengths(matches, cv)
+    weaknesses = identify_weaknesses(matches, cv, job)
+    
+    return CandidateScore(
+        candidate_id=candidate_id,
+        final_score=total_score,
+        category_scores={...},
+        strengths=strengths,
+        weaknesses=weaknesses,
+        evidence=all_evidence
+    )
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Poids externalisés} : Fichier JSON app/data/scoring\_weights.json. Permet ajustement sans code.
+    
+    \item \textbf{Redistribution des poids} : Si une catégorie est absente (ex: pas de certifications requises), ses poids sont redistribués aux autres pour ne pas pénaliser le candidat.
+    
+    \item \textbf{Forces et faiblesses} : Identifiées automatiquement pour aider le recruteur.
+    
+    \item \textbf{Transparence} : Chaque catégorie a son score, visible au recruteur.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : matching (tous les matchers), normalization, données (scoring\_weights.json)
+    \item Utilisé par : ranking pipeline
+    \item Retourne : CandidateScore avec score global et détails par catégorie
+\end{itemize}
+
+\subsection{app/services/scoring/weights.py}
+
+\subsubsection{Rôle exact}
+
+Gestion des poids de scoring. Charge et cache le fichier scoring\_weights.json.
+
+\subsubsection{Contenu principal}
+
+Charge les poids définis en JSON et les rend disponibles au scoring engine.
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Externalisation} : Poids en JSON pour adaptabilité sans code.
+    
+    \item \textbf{LRU cache} : Chargé une seule fois pour performance.
+\end{itemize}
+
+\newpage
+
+\section{Backend - Services - Orchestration (app/services/orchestration/)}
+
+\subsection{batch\_ranking\_pipeline.py}
+
+\subsubsection{Rôle exact}
+
+Pipeline principal complet. Orchestre l'ensemble des étapes d'analyse : extraction job, extraction CVs, vectorisation, retrieval, matching, scoring, ranking.
+
+\subsubsection{Place dans le flux global}
+
+Point de coordination central. Appelé par la route API /api/ranking/analyze (mode synchrone) ou via job manager (mode asynchrone).
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+class BatchRankingPipeline:
+    def run(self, job_path, cv_paths, top_k=5) -> RankingResponse:
+        """
+        Pipeline complet d'analyse et ranking.
+        
+        Étapes:
+        1. Crée un namespace vectoriel temporaire
+        2. Analyse la fiche de poste (extraction + normalisation)
+        3. Pour chaque CV:
+           a. Extraction + normalisation
+           b. Indexation vectorielle (chunks en embeddings)
+           c. Retrieval sémantique (preuves)
+           d. Scoring candidat
+        4. Ranking final (tri par score)
+        5. Stockage en base de données
+        6. Nettoyage du namespace
+        7. Retour du classement
+        """
+        namespace = f"analysis_{uuid4().hex}"
+        self._vector_store.reset_namespace(namespace)
+        
+        try:
+            # Extraction job
+            job = self._job_pipeline.run(job_path, ...)
+            job_id = _create_job_record(self._vector_store, ...)
+            
+            # Extraction et scoring CVs
+            matches = []
+            for cv_path in cv_paths:
+                cv = self._cv_pipeline.run(cv_path, ...)
+                
+                # Vectorisation
+                self._indexer.index_sections(namespace, ...)
+                
+                # Retrieval
+                evidence = self._retriever.retrieve(namespace, ...)
+                
+                # Scoring
+                score = self._scoring.score_candidate(...)
+                matches.append((score, cv))
+            
+            # Ranking
+            ranking = self._ranking.rank(matches)
+            
+            # Résultat final
+            response = RankingResponse(
+                job=job,
+                ranking=ranking,
+                total_candidates=len(matches)
+            )
+            
+            _create_analysis_record(self._vector_store, ...)
+            return response
+        
+        finally:
+            # Nettoyage systématique
+            self._vector_store.reset_namespace(namespace)
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Try-finally} : Garantit le nettoyage du namespace même en cas d'erreur.
+    
+    \item \textbf{Namespace par analyse} : Isolation des données. Évite les pollutions croisées entre analyses.
+    
+    \item \textbf{Ordre des étapes} : Extraction d'abord (structure), puis vectorisation (pour retrieval), puis scoring.
+    
+    \item \textbf{Reproductibilité} : Chaque analyse relit les fichiers. Pas de cache de résultats.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Dépend de : Tous les services (extraction, normalization, retrieval, matching, scoring, ranking)
+    \item Utilisé par : Routes API (ranking)
+    \item Comunique avec : Base de données (stockage résultats), vector store
+    \item Retourne : RankingResponse avec classement complet
+\end{itemize}
+
+\subsection{job\_manager.py}
+
+\subsubsection{Rôle exact}
+
+Gestion des analyses asynchrones. Maintain un pool de threads workers pour exécuter les pipelines en arrière-plan, et expose l'état via endpoints.
+
+\subsubsection{Place dans le flux global}
+
+Utilisé par la route API /api/ranking/jobs (mode asynchrone). Permet aux analyses longues de s'exécuter sans bloquer la requête HTTP.
+
+\subsubsection{Contenu principal}
+
+ThreadPool executor qui lance les pipelines. Chaque analyse a un ID et un état (pending, running, completed, failed).
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{ThreadPool} : Limite le nombre d'analyses parallèles pour ne pas surcharger les ressources.
+    
+    \item \textbf{État persistant} : Permet au frontend de poller et suivre la progression.
+    
+    \item \textbf{Timeout} : Analyses qui prennent trop longtemps sont annulées.
+\end{itemize}
+
+\subsection{analyze\_job\_pipeline.py et analyze\_cv\_pipeline.py}
+
+\subsubsection{Rôle exact}
+
+Pipelines d'extraction spécialisés pour job et CV. Encapsulent les étapes d'extraction + normalisation.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+class AnalyzeJobPipeline:
+    def run(self, job_file_path) -> StructuredJob:
+        # 1. Parse le fichier
+        doc = self._parser.extract(job_file_path)
+        
+        # 2. Extraction LLM
+        job = self._llm_extractor.extract(doc.text)
+        
+        # 3. Normalisation
+        job = self._normalizer.normalize(job)
+        
+        return job
+
+class AnalyzeCVPipeline:
+    def run(self, cv_file_path) -> (Document, StructuredCV):
+        # Analogue pour CV
+        ...
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Pipelines séparés} : Logique job et CV peut diverger. Plus flexible.
+    
+    \item \textbf{Réutilisabilité} : Chaque pipeline peut être appelé indépendamment.
+\end{itemize}
+
+\newpage
+
+\section{Backend - Services - Ranking (app/services/ranking/)}
+
+\subsection{ranking\_engine.py}
+
+\subsubsection{Rôle exact}
+
+Classement des candidats. Trie les candidats par score global décroissant. Gère les égalités (tie-breaking déterministe).
+
+\subsubsection{Place dans le flux global}
+
+Dernière étape avant retour du résultat. Reçoit une liste de (score, cv) et retourne une liste ordonnée de RankedCandidate.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+def rank(self, matches: List[Tuple[CandidateScore, StructuredCV]]) -> List[RankedCandidate]:
+    """
+    Trie et groupe les candidats par score.
+    
+    Tie-breaking (si scores très proches <= TIE_SCORE_TOLERANCE):
+    1. Groupe par score
+    2. Tri alphabétique du nom dans chaque groupe
+    3. Tous les candidats du groupe ont le même rang
+    """
+    
+    # Tri par score descendant, puis par nom
+    sorted_matches = sorted(
+        matches,
+        key=lambda x: (-x[0].final_score, x[1].candidate_name or "", x[1].filename)
+    )
+    
+    # Groupement par tie-breaking
+    ranked = []
+    current_rank = 1
+    for i, (score, cv) in enumerate(sorted_matches):
+        if i > 0 and abs(score.final_score - sorted_matches[i-1][0].final_score) > TIE_SCORE_TOLERANCE:
+            current_rank = i + 1
+        
+        ranked.append(RankedCandidate(
+            rank=current_rank,
+            candidate=cv,
+            score=score.final_score,
+            ...
+        ))
+    
+    return ranked
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Déterministe} : Même si scores identiques, tri alphabétique du nom assure l'ordre déterministe.
+    
+    \item \textbf{Tie-breaking} : Si deux scores sont très proches (< 0.5 pt), considérés ex aequo. Explique aux utilisateurs qu'il y a peu de différence.
+\end{itemize}
+
+\subsubsection{Interactions et dépendances}
+
+\begin{itemize}
+    \item Utilisé par : batch\_ranking\_pipeline
+    \item Retourne : List[RankedCandidate] avec rang et score
+\end{itemize}
+
+\newpage
+
+% ============================================
+% BACKEND - DATA ET SCHEMAS
+% ============================================
+
+\section{Backend - Données et Règles (app/data/ et app/schemas/)}
+
+\subsection{app/data/ - Fichiers de règles métier}
+
+Les fichiers JSON contiennent des données de configuration et de règles, versionnées avec le code pour traçabilité.
+
+\subsubsection{domain\_rules.json}
+
+Règles métier pour normalisation et matching. Peut contenir :
+\begin{itemize}
+    \item Alias de domaines métier (ex: "IT" → "Information Technology")
+    \item Listes de skills par domaine
+    \item Critères spécifiques du métier
+\end{itemize}
+
+\subsubsection{skill\_aliases.json}
+
+Normalisation des noms de compétences. Exemple :
+\begin{lstlisting}[language=json]
+{
+  "python": ["python", "py", "python3", "py3", "python3.11"],
+  "javascript": ["javascript", "js", "typescript", "ts"],
+  "react": ["react", "reactjs", "react.js"]
+}
+\end{lstlisting}
+
+\subsubsection{education\_levels.json}
+
+Normalisation des niveaux de formation. Exemple :
+\begin{lstlisting}[language=json]
+{
+  "baccalaureat": ["bac", "baccalaureat", "high school diploma"],
+  "licence": ["licence", "bachelor", "bsc", "ba"],
+  "master": ["master", "msc", "ma", "m2"]
+}
+\end{lstlisting}
+
+\subsubsection{language\_levels.json}
+
+Normalisation des niveaux de langue avec rangement numérique. Exemple :
+\begin{lstlisting}[language=json]
+{
+  "levels": {
+    "native": 7,
+    "fluent": 5,
+    "professional": 4,
+    "working knowledge": 2,
+    "beginner": 1
+  },
+  "aliases": {
+    "anglais": ["english", "ang", "en"],
+    "francais": ["french", "fr", "fra"]
+  }
+}
+\end{lstlisting}
+
+\subsubsection{job\_title\_aliases.json}
+
+Normalisation des intitulés de poste. Exemple :
+\begin{lstlisting}[language=json]
+{
+  "developer": ["dev", "developeur", "developer", "engineer"],
+  "project_manager": ["pm", "chef de projet", "project manager"],
+  "data_analyst": ["data analyst", "analyste donnees", "data specialist"]
+}
+\end{lstlisting}
+
+\subsubsection{scoring\_weights.json}
+
+Poids des catégories pour le calcul du score global. Exemple :
+\begin{lstlisting}[language=json]
+{
+  "skills": 0.30,
+  "experience": 0.25,
+  "education": 0.20,
+  "languages": 0.15,
+  "certifications": 0.05,
+  "responsibilities": 0.05
+}
+\end{lstlisting}
+
+\subsubsection{Justification des choix de conception}
+
+\begin{itemize}
+    \item \textbf{Externalisation} : Les règles ne sont pas en dur. Permet ajustement sans déploiement.
+    
+    \item \textbf{Versioning} : Fichiers JSON sont versionnés avec le code. Traçabilité des changements de règles.
+    
+    \item \textbf{LRU cache} : Chargés une seule fois pour performance.
+    
+    \item \textbf{Flexibilité} : Différentes règles pour différents contextes/clients.
+\end{itemize}
+
+\subsection{app/schemas/ - Modèles Pydantic}
+
+Schémas de données pour validation et documentation API.
+
+\subsubsection{document.py}
+
+\begin{lstlisting}[language=Python]
+class DocumentKind(StrEnum):
+    job = "job"
+    cv = "cv"
+    unknown = "unknown"
+
+class DocumentText(BaseModel):
+    filename: str
+    text: str  # Texte brut complet
+    sections: List[Section]  # Sections structurées
+\end{lstlisting}
+
+\subsubsection{cv.py}
+
+Modèle pour CV structuré retourné par LLM.
+
+\subsubsection{job.py}
+
+Modèle pour fiche de poste structurée.
+
+\subsubsection{matching.py}
+
+Modèles pour résultats du matching par catégorie.
+
+\subsubsection{ranking.py}
+
+Modèles pour réponse de ranking (RankingResponse, RankedCandidate, Evidence, etc.).
+
+\newpage
+
+% ============================================
+% BACKEND - CORE (EXCEPTIONS, SÉCURITÉ, LOGGING)
+% ============================================
+
+\section{Backend - Core (app/core/)}
+
+\subsection{exceptions.py}
+
+\subsubsection{Hiérarchie d'exceptions}
+
+\begin{lstlisting}[language=Python]
+class SmartRecruitError(Exception):
+    """Base exception"""
+    pass
+
+class DocumentParsingError(SmartRecruitError):
+    """Erreur lors du parsing d'un document"""
+    pass
+
+class ExternalServiceError(SmartRecruitError):
+    """Erreur avec un service externe (NVIDIA, PostgreSQL)"""
+    pass
+
+class ValidationError(SmartRecruitError):
+    """Erreur de validation des données"""
+    pass
+
+class UploadPolicyError(SmartRecruitError):
+    """Violation des règles d'upload (taille, quota, etc.)"""
+    status_code: int  # Code HTTP approprié
+    detail: str  # Message d'erreur pour le client
+\end{lstlisting}
+
+\subsubsection{Justification}
+
+\begin{itemize}
+    \item \textbf{Hiérarchie} : Permet catch par niveau générique ou spécifique.
+    
+    \item \textbf{Info de contexte} : Chaque exception conserve le contexte (status code, détails).
+\end{itemize}
+
+\subsection{security.py}
+
+\subsubsection{Rôle exact}
+
+Authentification par clé API et rate limiting en mémoire.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+def require_api_key(authorization: str = Header(...)):
+    """
+    Vérifie l'en-tête Authorization.
+    
+    Accepte: Bearer {key} ou X-API-Key: {key}
+    """
+    if not settings.smartrecruit_api_key:
+        raise HTTPException(status_code=500, detail="API key not configured")
+    
+    # Vérifie la clé
+    if not constant_time_compare(key_from_header, settings.smartrecruit_api_key):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    return True
+
+class InMemoryRateLimiter:
+    """
+    Rate limiter en mémoire par clé API ou IP.
+    
+    Tracking: {identifier: [timestamps]}
+    
+    Vérifie si nombre de requêtes dans la fenêtre > limite.
+    """
+    
+    def check_rate_limit(self, identifier: str) -> bool:
+        now = time.time()
+        window_start = now - RATE_LIMIT_WINDOW
+        
+        self.requests[identifier] = [
+            ts for ts in self.requests.get(identifier, [])
+            if ts > window_start
+        ]
+        
+        if len(self.requests[identifier]) >= RATE_LIMIT_REQUESTS:
+            return False  # Limité
+        
+        self.requests[identifier].append(now)
+        return True
+\end{lstlisting}
+
+\subsubsection{Justification}
+
+\begin{itemize}
+    \item \textbf{Authentification simple} : Clé API partagée suffit pour l'MVP.
+    
+    \item \textbf{Constant time compare} : Évite les timing attacks.
+    
+    \item \textbf{In-memory} : Simple et rapide. Limites : peut être dépassé en cluster (besoin de Redis en production).
+\end{itemize}
+
+\subsection{logging\_config.py}
+
+\subsubsection{Rôle exact}
+
+Configuration centralisée du logging structuré.
+
+\subsubsection{Contenu principal}
+
+Configure Python logging avec :
+\begin{itemize}
+    \item Format structuré (JSON ou texte)
+    \item Niveaux par module
+    \item Fichier de log + console
+    \item Contexte enrichi (request ID, analysis ID)
+\end{itemize}
+
+\subsubsection{Justification}
+
+\begin{itemize}
+    \item \textbf{Traçabilité} : Request ID et analysis ID dans tous les logs pour déboguer.
+    
+    \item \textbf{Centralisé} : Configuration unique au démarrage.
+\end{itemize}
+
+\subsection{model\_audit.py}
+
+\subsubsection{Rôle exact}
+
+Context manager pour audit des appels aux modèles IA. Enregistre chaque appel LLM ou embedding pour traçabilité.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+@contextmanager
+def model_call_context(
+    analysis_namespace,
+    document_role,
+    document_filename,
+    candidate_filename=None
+):
+    """
+    Context manager pour entourer les appels IA.
+    
+    Enregistre:
+    - Métadonnées (analyse ID, document, candidat)
+    - Prompt envoyé au LLM
+    - Réponse reçue
+    - Durée de l'appel
+    """
+    
+    # Initialise les statistiques
+    start_time = time.time()
+    
+    try:
+        yield
+    finally:
+        # Enregistre les statistiques
+        duration = time.time() - start_time
+        logger.info("Model call completed", extra={
+            "analysis_id": analysis_namespace,
+            "document": document_filename,
+            "duration_ms": int(duration * 1000)
+        })
+\end{lstlisting}
+
+\subsubsection{Justification}
+
+\begin{itemize}
+    \item \textbf{Transparence} : Chaque appel IA est enregistré pour audit.
+    
+    \item \textbf{Performance} : Mesure les durées pour identifier les goulots.
+\end{itemize}
+
+\newpage
+
+% ============================================
+% BACKEND - DATABASE ET TESTS
+% ============================================
+
+\section{Backend - Database (app/database/)}
+
+\subsection{models.py}
+
+\subsubsection{Rôle exact}
+
+Modèles SQLAlchemy pour tables PostgreSQL.
+
+\subsubsection{Tables principales}
+
+\begin{description}
+    \item[jobs] Fiches de poste analysées
+    \begin{itemize}
+        \item job\_id (PK)
+        \item job\_title, required\_skills, responsibilities
+        \item content\_hash (pour déduplication)
+        \item created\_at
+    \end{itemize}
+    
+    \item[resumes] CVs analysés
+    \begin{itemize}
+        \item resume\_id (PK)
+        \item candidate\_name, email, phone
+        \item content\_hash
+        \item created\_at
+    \end{itemize}
+    
+    \item[analyses] Résultats d'analyses
+    \begin{itemize}
+        \item analysis\_id (PK)
+        \item job\_id (FK)
+        \item ranking\_result (JSON)
+        \item created\_at
+    \end{itemize}
+    
+    \item[vector\_chunks] Chunks vectorisés temporaires
+    \begin{itemize}
+        \item chunk\_id (PK)
+        \item namespace (clé de groupement pour nettoyage)
+        \item document\_id, section, chunk\_index
+        \item text, embedding (vector type pgvector)
+    \end{itemize}
+\end{description}
+
+\subsubsection{Justification}
+
+\begin{itemize}
+    \item \textbf{Historisation} : Garde la trace de toutes les analyses.
+    
+    \item \textbf{Content hash} : Permet de déduplicfer identiques fiches/CVs.
+    
+    \item \textbf{Namespace} : Facilite le nettoyage des chunks après analyse.
+\end{itemize}
+
+\subsection{session.py}
+
+\subsubsection{Rôle exact}
+
+Factory de session SQLAlchemy. Gère le pool de connexions et la création de sessions.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=Python]
+def get_session():
+    """Retourne une nouvelle session SQLAlchemy"""
+    return SessionLocal()
+
+# Configuré avec:
+# - URL PostgreSQL depuis config
+# - Pool size et overflow settings
+# - Timeout et echo settings
+\end{lstlisting}
+
+\section{Backend - Tests (backend/tests/)}
+
+\subsection{Structure}
+
+\begin{lstlisting}[language=bash]
+tests/
+├── conftest.py         # Fixtures pytest partagées
+├── test_health.py      # Test de santé
+├── unit/               # Tests unitaires des services
+├── integration/        # Tests d'intégration (e2e)
+\end{lstlisting}
+
+\subsection{Couverture de tests}
+
+Cible : \textbf{70\%} de couverture (configuré en pyproject.toml).
+
+\begin{itemize}
+    \item Tests des normaliseurs (date, skills, education, etc.)
+    \item Tests des matchers (skills, education, languages, etc.)
+    \item Tests du scoring engine
+    \item Tests du ranking engine
+    \item Tests de l'upload manager
+    \item Tests de parsing de documents
+\end{itemize}
+
+\subsubsection{Justification}
+
+\begin{itemize}
+    \item \textbf{70\%} : Équilibre entre couverture et maintenabilité. Couvre la logique critiques sans tester chaque ligne.
+    
+    \item \textbf{Unit tests} : Tests des composants isolés avec mocks.
+    
+    \item \textbf{Integration tests} : Tests avec vraie BD et services (optionnel en CI).
+\end{itemize}
+
+\newpage
+
+% ============================================
+% FRONTEND
+% ============================================
+
+\section{Frontend - React (frontend/src/)}
+
+\subsection{App.tsx}
+
+\subsubsection{Rôle exact}
+
+Composant racine React. Gère l'interface utilisateur avec upload de fichiers, suivi de progression et affichage des résultats.
+
+\subsubsection{Place dans le flux global}
+
+Point d'entrée du frontend. Reçoit les interactions utilisateur, appelle le backend, affiche les résultats.
+
+\subsubsection{Contenu principal}
+
+États gérés :
+\begin{itemize}
+    \item \texttt{jobFile}, \texttt{cvFiles} : Fichiers uploadés
+    \item \texttt{analysisId} : ID de l'analyse en cours
+    \item \texttt{progress} : Progression (0-100\%)
+    \item \texttt{results} : Résultats du ranking
+    \item \texttt{loading}, \texttt{error} : États
+\end{itemize}
+
+Fonctionnalités :
+\begin{itemize}
+    \item Upload drag-and-drop
+    \item Validation côté client (taille, formats)
+    \item Appel \texttt{POST /api/ranking/jobs}
+    \item Polling \texttt{GET /api/ranking/jobs/{id}}
+    \item Affichage des résultats avec scores et preuves
+    \item Masquage automatique des données sensibles
+\end{itemize}
+
+\subsubsection{Justification}
+
+\begin{itemize}
+    \item \textbf{Mode asynchrone} : Utilise POST /jobs + polling GET pour ne pas bloquer l'interface.
+    
+    \item \textbf{Validation client} : Feedback rapide avant d'envoyer au serveur.
+    
+    \item \textbf{Masquage automatique} : Regex pour masquer emails, téléphones, URLs.
+\end{itemize}
+
+\subsection{validation.ts}
+
+\subsubsection{Rôle exact}
+
+Validations côté client. Vérifie la taille des fichiers, les formats, etc. avant upload.
+
+\subsubsection{Contenu principal}
+
+\begin{lstlisting}[language=TypeScript]
+export function validateFile(file: File): ValidationError | null {
+    const maxSize = VITE_MAX_UPLOAD_MB * 1024 * 1024;
+    if (file.size > maxSize) {
+        return { message: `Fichier trop grand (max ${VITE_MAX_UPLOAD_MB}MB)` };
+    }
+    
+    const allowed = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if (!allowed.includes(file.type)) {
+        return { message: "Format non supporté (PDF, DOCX)" };
+    }
+    
+    return null;
+}
+
+export function validateUploads(jobFile: File, cvFiles: File[]): ValidationError | null {
+    const maxCvs = VITE_MAX_CV_FILES;
+    if (cvFiles.length > maxCvs) {
+        return { message: `Trop de CVs (max ${maxCvs})` };
+    }
+    
+    const totalSize = [jobFile, ...cvFiles].reduce((s, f) => s + f.size, 0);
+    const maxTotal = VITE_MAX_TOTAL_UPLOAD_MB * 1024 * 1024;
+    if (totalSize > maxTotal) {
+        return { message: `Taille totale dépassée (max ${VITE_MAX_TOTAL_UPLOAD_MB}MB)` };
+    }
+    
+    return null;
+}
+\end{lstlisting}
+
+\subsection{styles.css}
+
+\subsubsection{Rôle exact}
+
+Styles CSS globaux pour design responsif et accessible.
+
+\subsubsection{Contenu}
+
+\begin{itemize}
+    \item Variables CSS pour couleurs, polices, espacements
+    \item Layout flexible (flexbox, grid)
+    \item Design responsif (media queries)
+    \item Accessibilité (focus states, contraste)
+\end{itemize}
+
+\newpage
+
+% ============================================
+% PARTIE 4: SYNTHÈSE ET CONCLUSION
+% ============================================
+
+\chapter{Synthèse et vue d'ensemble finale}
+
+\section{Architecture globale revisitée}
+
+SmartRecruit est un système complètement intégré qui combine trois couches :
+
+\subsection{Couche 1 : Présentation (Frontend React)}
+
+Interface utilisateur interactive pour :
+\begin{itemize}
+    \item Upload de documents
+    \item Suivi de progression en temps réel
+    \item Affichage des résultats avec explications
+    \item Masquage automatique de données sensibles
+\end{itemize}
+
+\subsection{Couche 2 : Logique métier (Backend FastAPI + Services)}
+
+Pipeline d'analyse multi-étapes :
+\begin{enumerate}
+    \item \textbf{Extraction} : Parsing PDF/DOCX → texte brut
+    \item \textbf{Structuration LLM} : LLM transforme texte → JSON structuré
+    \item \textbf{Normalisation} : Standardisation des valeurs via règles métier
+    \item \textbf{Vectorisation} : Chunking + embeddings + stockage PostgreSQL
+    \item \textbf{Retrieval} : Recherche sémantique des passages pertinents
+    \item \textbf{Matching} : Comparaison par catégories
+    \item \textbf{Scoring} : Calcul du score global avec poids
+    \item \textbf{Ranking} : Tri et classement final
+\end{enumerate}
+
+\subsection{Couche 3 : Données (PostgreSQL + API NVIDIA)}
+
+\begin{itemize}
+    \item \textbf{PostgreSQL} : Historisation (jobs, resumes, analyses), stockage vectoriel (vector\_chunks)
+    \item \textbf{NVIDIA API} : LLM pour structuration, embeddings pour vectorisation
+    \item \textbf{Fichiers JSON} : Règles métier versionnées (skills aliases, poids, etc.)
+\end{itemize}
+
+\section{Flux de données complet}
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Étape} & \textbf{Entrée} & \textbf{Sortie} \\
+\hline
+1. Upload & PDF fiche + PDF CVs & Fichiers temporaires validés \\
+\hline
+2. Parsing & Fichiers & Texte brut + sections \\
+\hline
+3. Extraction LLM & Texte brut & JSON structuré (CV, Job) \\
+\hline
+4. Normalisation & JSON brut & JSON normalisé \\
+\hline
+5. Vectorisation & Sections CV & Embeddings stockés en pgvector \\
+\hline
+6. Retrieval & Critères Job & Passages CV pertinents \\
+\hline
+7. Matching & CV, Job, Preuves & Score par catégories \\
+\hline
+8. Scoring & Scores catégories & Score global + forces/faiblesses \\
+\hline
+9. Ranking & Liste (score, CV) & Classement trié \\
+\hline
+10. Réponse & Classement & Affichage frontend \\
+\hline
+\end{tabular}
+\end{center}
+
+\section{Principes architecturaux clés}
+
+\subsection{1. Séparation des responsabilités}
+
+Chaque service/module a une responsabilité unique :
+\begin{itemize}
+    \item \texttt{documents/} : Parsing uniquement
+    \item \texttt{extraction/} : Structuration LLM uniquement
+    \item \texttt{normalization/} : Normalisation uniquement
+    \item \texttt{matching/} : Comparaison par catégories
+    \item \texttt{scoring/} : Calcul des scores
+    \item \texttt{retrieval/} : Recherche vectorielle
+\end{itemize}
+
+Bénéfices :
+\begin{itemize}
+    \item Testabilité : Chaque module peut être testé isolément
+    \item Maintenabilité : Bugs localisés, fixes ciblées
+    \item Réutilisabilité : Services peuvent être utilisés dans d'autres contextes
+    \item Évolutivité : Ajouter/modifier une catégorie ne casse pas le reste
+\end{itemize}
+
+\subsection{2. Configuration externalisée}
+
+Les règles métier ne sont pas en dur dans le code :
+\begin{itemize}
+    \item \texttt{.env} : Configuration d'exécution (clés API, URLs, limites)
+    \item \texttt{app/data/*.json} : Règles métier versionnées
+    \item Permet ajustement sans redéploiement
+    \item Traçabilité : Changements de règles tracés en Git
+\end{itemize}
+
+\subsection{3. Reproductibilité}
+
+Chaque analyse relit les documents de zéro. Aucun cache de résultats :
+\begin{itemize}
+    \item LLM avec temperature=0, seed fixé
+    \item Namespace vectoriel isolé par analyse, puis supprimé
+    \item Deux analyses identiques produisent les mêmes résultats
+    \item Crucial pour confiance et validation
+\end{itemize}
+
+\subsection{4. Traçabilité et audit}
+
+Chaque requête/analyse a un ID unique :
+\begin{itemize}
+    \item Request ID : Identifie une requête HTTP
+    \item Analysis ID : Identifie une analyse complète
+    \item Propagés dans tous les logs pour debugging
+    \item Appels IA enregistrés via model\_audit.py
+\end{itemize}
+
+\subsection{5. Sécurité}
+
+Plusieurs couches de protection :
+\begin{itemize}
+    \item Authentification : Clé API obligatoire sur routes d'analyse
+    \item Rate limiting : Limite du nombre de requêtes par fenêtre
+    \item Upload quotas : Limites de taille et nombre
+    \item Validation stricte : Extensions, signatures de fichiers vérifiées
+    \item Données temporaires : Upload par dossier, nettoyage garanti
+    \item Logs sécurisés : Pas de contenu brut des documents
+\end{itemize}
+
+\section{Justification des choix technologiques}
+
+\subsection{Python + FastAPI}
+
+\begin{itemize}
+    \item \textbf{Avantages} : Excellent pour IA/ML, écosystème riche (NumPy, pandas), développement rapide, TypeScript avec Pydantic
+    \item \textbf{Performance} : FastAPI avec uvicorn est assez rapide pour l'MVP. Peut scale horizontalement.
+    \item \textbf{Écosystème} : PyMuPDF, python-docx, SQLAlchemy bien maintenus
+\end{itemize}
+
+\subsection{React + Vite}
+
+\begin{itemize}
+    \item \textbf{Avantages} : Interface interactive, TypeScript pour type safety, Vite pour build rapide
+    \item \textbf{Accessibilité} : React offre une bonne base pour UI accessible
+    \item \textbf{Maintenabilité} : Code TypeScript typé, erreurs détectées tôt
+\end{itemize}
+
+\subsection{PostgreSQL + pgvector}
+
+\begin{itemize}
+    \item \textbf{Avantages} : Open source, stable, support natif des vecteurs via extension pgvector
+    \item \textbf{Performance} : Recherche vectorielle native performante avec indexing
+    \item \textbf{Flexibilité} : Peut aussi stocker les résultats d'analyses
+    \item \textbf{Fallback} : Support JSON backend pour développement sans PostgreSQL
+\end{itemize}
+
+\subsection{NVIDIA API pour LLM et embeddings}
+
+\begin{itemize}
+    \item \textbf{Avantages} : Performant, à jour, support de modèles récents
+    \item \textbf{Déterminisme} : Seed et temperature fixes pour reproductibilité
+    \item \textbf{Coût} : API payante (basée à l'usage)
+\end{itemize}
+
+\section{Points forts du système}
+
+\begin{itemize}
+    \item \textbf{Explicabilité} : Chaque score justifié par des passages textuels
+    \item \textbf{Modularité} : Services découplés, faciles à tester et modifier
+    \item \textbf{Sécurité} : Authentification, rate limiting, validation stricte
+    \item \textbf{Reproductibilité} : Analyses déterministes grâce aux paramètres IA figés
+    \item \textbf{Scalabilité} : Peut traiter plusieurs analyses en parallèle via threads
+    \item \textbf{Traçabilité} : Audit complet de chaque requête et appel IA
+\end{itemize}
+
+\section{Limitations et améliorations possibles}
+
+\subsection{Limitations actuelles}
+
+\begin{itemize}
+    \item \textbf{Rate limiting en-mémoire} : Ne scale pas en cluster. Besoin de Redis en production.
+    
+    \item \textbf{ThreadPool local} : Les jobs asynchrones ne persistent pas entre redémarrages. Besoin de file de messages (Celery, RabbitMQ) en production.
+    
+    \item \textbf{Stockage temporaire local} : Assume stockage local. En production cloud, besoin de S3/GCS.
+    
+    \item \textbf{Namespace vectoriel simple} : Cleanup en finally fonctionne si process ne crash pas. Besoin de job de maintenance en production.
+    
+    \item \textbf{Matchers basés sur regex} : Matching skills/responsibilities simple. Pourrait bénéficier de NLP plus avancé.
+\end{itemize}
+
+\subsection{Améliorations possibles}
+
+\begin{itemize}
+    \item \textbf{Persistence des jobs} : Utiliser une file de messages (Celery) pour job manager
+    
+    \item \textbf{Caching intelligent} : Redis pour cache des embeddings (même texte = même embedding)
+    
+    \item \textbf{Stockage cloud} : S3/GCS pour uploads, pas de dossiers locaux
+    
+    \item \textbf{Fine-tuning du LLM} : LLM dédié SmartRecruit avec examples
+    
+    \item \textbf{Ranking learning-to-rank} : Machine learning pour poids optimisés selon feedback
+    
+    \item \textbf{Monitoring avancé} : Prometheus, Grafana, alertes
+    
+    \item \textbf{Versioning des analyses} : Permettre de rejouer une analyse avec ancien code
+\end{itemize}
+
+\section{Conclusion}
+
+SmartRecruit est une solution complète et cohérente pour classification automatique de CV. L'architecture est modulaire, explicable et sécurisée. Les choix technologiques (Python, FastAPI, React, PostgreSQL/pgvector, NVIDIA API) sont adaptés à l'MVP et performants pour une utilisation en production légère.
+
+Les principes clés -- séparation des responsabilités, configuration externalisée, reproductibilité, traçabilité -- en font un système maintenable et évolutif. Les limitations identifiées sont principalement autour de la scalabilité horizontale et persistance en cluster, qui peuvent être adressées dans une phase de production future.
+
+\appendix
+
+\chapter{Lexique et termes clés}
+
+\section{Termes métier}
+
+\begin{description}
+    \item[CV] Curriculum Vitae - document personnel décrivant le candidat
+    
+    \item[Fiche de poste] Job description - ensemble de critères et responsabilités pour un poste
+    
+    \item[Matching] Comparaison candidat vs fiche de poste par catégories
+    
+    \item[Scoring] Calcul du score global d'un candidat
+    
+    \item[Evidence] Passage textuel du CV justifiant un score
+    
+    \item[Ranking] Classement final trié par score
+    
+    \item[Normalisation] Standardisation des valeurs (ex: "Python3" → "Python")
+    
+    \item[RAG] Retrieval-Augmented Generation - technique de recherche de passages pertinents pour justifier les décisions
+\end{description}
+
+\section{Termes techniques}
+
+\begin{description}
+    \item[Embedding] Vecteur de nombres représentant un texte dans l'espace sémantique
+    
+    \item[Vectorisation] Processus de conversion de texte en embedding
+    
+    \item[Chunk] Fragment de texte pour vectorisation
+    
+    \item[Namespace] Groupement logique de chunks pour isolation des analyses
+    
+    \item[pgvector] Extension PostgreSQL pour stockage et recherche de vecteurs
+    
+    \item[LLM] Large Language Model - modèle de traitement du langage naturel
+    
+    \item[Temperature] Paramètre du LLM contrôlant la créativité (0 = déterministe)
+    
+    \item[Seed] Valeur pour reproductibilité des résultats aléatoires
+    
+    \item[Context manager] Pattern Python pour gérer l'état dans une scope (try-finally)
+    
+    \item[Dependency injection] Pattern pour fournir les dépendances à un composant
+    
+    \item[Rate limiting] Limitation du nombre de requêtes par fenêtre de temps
+    
+    \item[Request ID] Identifiant unique pour tracer une requête HTTP
+\end{description}
+
+\end{document}

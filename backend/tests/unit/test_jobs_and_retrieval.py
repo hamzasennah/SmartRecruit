@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 
 from app.api.routes import ranking
@@ -16,6 +17,11 @@ from fastapi.testclient import TestClient
 class FakePipeline:
     def run(self, job_path, cv_paths, top_k: int = 5) -> RankingResponse:
         return RankingResponse(job=StructuredJobDescription(job_title="Data Analyst"), total_candidates=len(cv_paths))
+
+
+class FailingPipeline:
+    def run(self, job_path, cv_paths, top_k: int = 5) -> RankingResponse:
+        raise RuntimeError("boom")
 
 
 def _files() -> list[tuple[str, tuple[str, bytes, str]]]:
@@ -56,6 +62,26 @@ def test_ranking_job_lifecycle(monkeypatch) -> None:
     assert payload["status"] == "completed"
     assert payload["progress"] == 100
     assert payload["result"]["total_candidates"] == 1
+
+
+def test_ranking_job_failure_is_logged(tmp_path, caplog) -> None:
+    analysis_job_manager.reset()
+    upload_dir = tmp_path / "upload"
+    upload_dir.mkdir()
+
+    with caplog.at_level(logging.ERROR):
+        job = analysis_job_manager.submit(lambda: FailingPipeline(), object(), [], 3, upload_dir)
+        payload = None
+        for _ in range(20):
+            payload = analysis_job_manager.get_status(job.analysis_id)
+            if payload and payload.status == "failed":
+                break
+            time.sleep(0.05)
+
+    assert payload is not None
+    assert payload.status == "failed"
+    assert payload.error == "Analyse impossible. Consultez les logs serveur avec l'identifiant d'analyse."
+    assert any(record.message == "Analyse asynchrone echouee." for record in caplog.records)
 
 
 def test_segment_sections_keeps_full_text_complete() -> None:

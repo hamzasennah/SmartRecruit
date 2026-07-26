@@ -90,9 +90,55 @@ type PipelineStep = {
 };
 
 const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
-const API_LABEL = API_URL || "proxy local /api -> 127.0.0.1:8002";
+const API_LABEL = "API connectee";
 const API_KEY = import.meta.env.VITE_SMARTRECRUIT_API_KEY || "";
 const ACCEPTED_EXTENSIONS = SUPPORTED_EXTENSIONS.join(",");
+const EVIDENCE_PREVIEW_LIMIT = 3;
+const EVIDENCE_TEXT_LIMIT = 320;
+const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const URL_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>()]+/gi;
+const PHONE_PATTERN = /(^|[^\w%])(\+?\d[\d\s()./-]{7,}\d)(?![\w%])/g;
+
+const CATEGORY_LABELS: Record<string, string> = {
+  technical_skills: "Competences techniques",
+  experience: "Experience",
+  responsibilities: "Responsabilites",
+  education: "Formation",
+  languages: "Langues",
+  certifications_domains: "Certifications et domaines",
+  soft_skills: "Soft skills",
+};
+
+const DETAIL_LABELS: Record<string, string> = {
+  candidate_levels: "Niveaux detectes (audit)",
+  candidate_level_labels: "Niveaux detectes",
+  required_levels: "Niveaux requis (audit)",
+  required_level_labels: "Niveaux requis",
+  level_sources: "Origine du niveau",
+  below_required_level: "Sous le niveau requis (audit)",
+  below_required_level_display: "Sous le niveau requis",
+  language_credits: "Credits obtenus",
+  scoring_rule: "Regle de calcul",
+  base_weight: "Poids initial",
+  redistributed_weight: "Poids applique",
+  responsibility_scores: "Scores des responsabilites",
+  retrieved_evidence_count: "Preuves analysees",
+  matched_evidence: "Preuves retenues",
+  partial_evidence: "Preuves partielles",
+  partial_mandatory: "Competences obligatoires partielles",
+  partial_preferred: "Competences souhaitees partielles",
+};
+
+const LANGUAGE_RANK_LABELS: Record<number, string> = {
+  0: "non precise",
+  1: "A1",
+  2: "A2 / basique",
+  3: "B1 / intermediaire",
+  4: "professionnel",
+  5: "courant",
+  6: "bilingue",
+  7: "natif",
+};
 
 const PIPELINE_STEPS: PipelineStep[] = [
   {
@@ -114,8 +160,8 @@ const PIPELINE_STEPS: PipelineStep[] = [
     icon: FileText,
   },
   {
-    title: "RAG",
-    detail: "Embeddings NVIDIA, PostgreSQL et recherche semantique",
+    title: "Recherche semantique",
+    detail: "Embeddings et recherche de preuves",
     target: 76,
     icon: Search,
   },
@@ -505,6 +551,8 @@ function CriteriaList({ title, values }: { title: string; values: string[] }) {
 
 function CandidateCard({ item }: { item: RankedCandidate }) {
   const candidate = item.candidate;
+  const visibleEvidence = candidate.evidence.slice(0, EVIDENCE_PREVIEW_LIMIT);
+  const hiddenEvidence = candidate.evidence.slice(EVIDENCE_PREVIEW_LIMIT);
   return (
     <article className="candidate-card">
       <div className="candidate-head">
@@ -535,23 +583,49 @@ function CandidateCard({ item }: { item: RankedCandidate }) {
 
       {candidate.evidence.length > 0 && (
         <details className="evidence-details">
-          <summary>Preuves principales</summary>
+          <summary>Preuves</summary>
           <ul>
-            {candidate.evidence.slice(0, 6).map((evidence, index) => (
-              <li key={`${evidence.source}-${index}`}>
-                <span className="evidence-source">{evidence.source}</span>
-                <span className="evidence-score">{evidence.score.toFixed(3)}</span>
-                <p>{evidence.text}</p>
-              </li>
+            {visibleEvidence.map((evidence, index) => (
+              <EvidenceItem evidence={evidence} key={`${evidence.source}-${index}`} />
             ))}
           </ul>
+          {hiddenEvidence.length > 0 && (
+            <details className="evidence-more">
+              <summary>{hiddenEvidence.length} preuve(s) supplementaire(s)</summary>
+              <ul>
+                {hiddenEvidence.map((evidence, index) => (
+                  <EvidenceItem evidence={evidence} key={`${evidence.source}-more-${index}`} />
+                ))}
+              </ul>
+            </details>
+          )}
         </details>
       )}
     </article>
   );
 }
 
+function EvidenceItem({ evidence }: { evidence: Evidence }) {
+  const redacted = redactPersonalData(evidence.text);
+  const preview = truncateText(redacted, EVIDENCE_TEXT_LIMIT);
+  const hasMore = preview !== redacted;
+  return (
+    <li>
+      <span className="evidence-source">{formatEvidenceSource(evidence.source)}</span>
+      <span className="evidence-score">{evidence.score.toFixed(3)}</span>
+      <p>{preview}</p>
+      {hasMore && (
+        <details className="evidence-full">
+          <summary>Lire la preuve complete</summary>
+          <p>{redacted}</p>
+        </details>
+      )}
+    </li>
+  );
+}
+
 function CategoryBlock({ category }: { category: CategoryScore }) {
+  const categoryTitle = formatCategoryName(category.name);
   const partialSkills =
     category.name === "technical_skills"
       ? [
@@ -567,7 +641,7 @@ function CategoryBlock({ category }: { category: CategoryScore }) {
   return (
     <section className="category-block">
       <div className="category-title">
-        <h3>{category.name}</h3>
+        <h3>{categoryTitle}</h3>
         <strong>{formatScore(category.score)}</strong>
       </div>
       <div className="score-line">
@@ -595,13 +669,14 @@ function CategoryBlock({ category }: { category: CategoryScore }) {
           <TextList values={partialResponsibilities} empty="Aucune" />
         </div>
       )}
+      {category.name === "languages" && <LanguageLevelSummary details={category.details} />}
       {Object.keys(category.details || {}).length > 0 && (
         <details className="detail-json">
-          <summary>Details</summary>
+          <summary>Details d'audit</summary>
           <dl>
             {Object.entries(category.details).map(([key, value]) => (
               <div key={key}>
-                <dt>{key}</dt>
+                <dt>{formatDetailLabel(key)}</dt>
                 <dd>{formatDetail(value)}</dd>
               </div>
             ))}
@@ -610,6 +685,79 @@ function CategoryBlock({ category }: { category: CategoryScore }) {
       )}
     </section>
   );
+}
+
+function LanguageLevelSummary({ details }: { details: Record<string, unknown> }) {
+  const candidateLevels = readLevelLabels(details.candidate_level_labels, details.candidate_levels);
+  const requiredLevels = readLevelLabels(details.required_level_labels, details.required_levels);
+  const sources = readStringRecord(details.level_sources);
+  const languages = Array.from(new Set([...Object.keys(candidateLevels), ...Object.keys(requiredLevels)]));
+  if (languages.length === 0) {
+    return null;
+  }
+  const below = readBelowRequiredLanguageRows(details.below_required_level_display);
+  return (
+    <div className="language-levels">
+      <h4>Niveaux de langue</h4>
+      <ul>
+        {languages.map((language) => (
+          <li key={language}>
+            <strong>{language}</strong>
+            <span>detecte : {candidateLevels[language] || "non precise"}</span>
+            <span>requis : {requiredLevels[language] || "non precise"}</span>
+            <span>origine : {sources[language] || "mention du CV"}</span>
+          </li>
+        ))}
+      </ul>
+      {below.length > 0 && (
+        <div className="language-warning">
+          <h5>Sous le niveau requis</h5>
+          <ul>
+            {below.map((row) => (
+              <li key={row.language}>
+                {row.language}: {row.candidateLevel} detecte, {row.requiredLevel} requis ({row.source})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function readLevelLabels(labels: unknown, ranks: unknown): Record<string, string> {
+  const labelled = readStringRecord(labels);
+  if (Object.keys(labelled).length > 0) {
+    return labelled;
+  }
+  const ranked = readNumberRecord(ranks);
+  return Object.fromEntries(Object.entries(ranked).map(([language, rank]) => [language, formatLanguageRank(rank)]));
+}
+
+function readBelowRequiredLanguageRows(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const record = item as Record<string, unknown>;
+      const language = String(record.language || "").trim();
+      if (!language) {
+        return null;
+      }
+      return {
+        language,
+        candidateLevel: String(record.candidate_level || "non precise"),
+        requiredLevel: String(record.required_level || "non precise"),
+        source: String(record.source || "mention du CV"),
+      };
+    })
+    .filter((item): item is { language: string; candidateLevel: string; requiredLevel: string; source: string } =>
+      Boolean(item),
+    );
 }
 
 function formatPartialResponsibilities(partial: unknown, responsibilityScores: unknown): string[] {
@@ -652,7 +800,7 @@ function formatPartialSkillMatches(value: unknown): string[] {
       }
       const record = item as Record<string, unknown>;
       const skill = String(record.skill || "").trim();
-      const evidence = String(record.evidence || "").trim();
+      const evidence = redactPersonalData(String(record.evidence || "").trim());
       const credit = Number(record.credit_percent);
       const creditLabel = Number.isFinite(credit) ? `, credit ${credit.toFixed(0)}%` : "";
       if (skill && evidence) {
@@ -685,14 +833,90 @@ function formatScore(value: number) {
   return `${value.toFixed(2)}%`;
 }
 
+function formatCategoryName(name: string) {
+  return CATEGORY_LABELS[name] || name;
+}
+
+function formatDetailLabel(name: string) {
+  return DETAIL_LABELS[name] || name.replace(/_/g, " ");
+}
+
+function formatEvidenceSource(source: string) {
+  return CATEGORY_LABELS[source] || source.replace(/_/g, " ");
+}
+
+function formatLanguageRank(rank: number) {
+  return LANGUAGE_RANK_LABELS[rank] || `niveau ${rank}`;
+}
+
+function readStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, redactPersonalData(String(item))]),
+  );
+}
+
+function readNumberRecord(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => [key, Number(item)] as const)
+      .filter(([, item]) => Number.isFinite(item)),
+  );
+}
+
 function formatDetail(value: unknown) {
   if (Array.isArray(value)) {
-    return value.length ? value.join(", ") : "Aucun";
+    if (value.length === 0) {
+      return "Aucun";
+    }
+    return value.every((item) => item === null || typeof item !== "object")
+      ? value.map((item) => formatDetailScalar(item)).join(", ")
+      : value.map(formatNestedDetail).join(" ; ");
   }
   if (value && typeof value === "object") {
-    return JSON.stringify(value);
+    return formatNestedDetail(value);
   }
-  return String(value ?? "null");
+  return formatDetailScalar(value);
+}
+
+function formatNestedDetail(value: unknown): string {
+  if (!value || typeof value !== "object") {
+    return formatDetailScalar(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(formatNestedDetail).join(", ")}]`;
+  }
+  return Object.entries(value as Record<string, unknown>)
+    .map(([key, item]) => `${formatDetailLabel(key)}: ${formatNestedDetail(item)}`)
+    .join(", ");
+}
+
+function formatDetailScalar(value: unknown) {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
+  }
+  return redactPersonalData(String(value ?? "null"));
+}
+
+function truncateText(value: string, limit: number) {
+  if (value.length <= limit) {
+    return value;
+  }
+  return `${value.slice(0, limit).trimEnd()}...`;
+}
+
+function redactPersonalData(value: string) {
+  const withoutEmails = value.replace(EMAIL_PATTERN, "[email masque]");
+  const withoutUrls = withoutEmails.replace(URL_PATTERN, "[url masquee]");
+  return withoutUrls.replace(PHONE_PATTERN, (match, prefix: string, phone: string) => {
+    const digitCount = phone.replace(/\D/g, "").length;
+    return digitCount >= 9 && digitCount <= 15 ? `${prefix}[telephone masque]` : match;
+  });
 }
 
 function readApiError(payload: unknown, status: number) {

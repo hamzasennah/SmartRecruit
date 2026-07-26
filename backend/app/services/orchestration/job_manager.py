@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -8,8 +9,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.config import settings
+from app.core.request_context import analysis_id_context
 from app.schemas.ranking import AnalysisJobStatus, RankingResponse
 from app.services.documents.upload_manager import SavedUpload, cleanup_upload_dir
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -96,9 +100,11 @@ class AnalysisJobManager:
         job = self._set_status(analysis_id, "running", 10)
         if not job:
             return
+        token = analysis_id_context.set(analysis_id)
         try:
             result = pipeline_factory().run(job_upload, cv_uploads, top_k=top_k)
         except Exception:
+            logger.exception("Analyse asynchrone echouee.", extra={"analysis_id": analysis_id})
             self._set_status(
                 analysis_id,
                 "failed",
@@ -108,6 +114,7 @@ class AnalysisJobManager:
         else:
             self._set_status(analysis_id, "completed", 100, result=result)
         finally:
+            analysis_id_context.reset(token)
             current = self._get_job(analysis_id)
             if current:
                 cleanup_upload_dir(current.upload_dir)

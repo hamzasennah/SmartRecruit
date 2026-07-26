@@ -1,11 +1,11 @@
 from app.schemas.ranking import RankedCandidate
 
-TIE_SCORE_TOLERANCE = 0.5
+DISPLAY_SCORE_DECIMALS = 2
 
 
 class RankingEngine:
     def rank(self, matches) -> list[RankedCandidate]:
-        ordered = sorted(matches, key=lambda item: item[0].final_score, reverse=True)
+        ordered = sorted(matches, key=_ranking_sort_key)
         groups = _score_groups(ordered)
 
         ranked: list[RankedCandidate] = []
@@ -27,16 +27,28 @@ class RankingEngine:
         return ranked
 
 
+def _ranking_sort_key(item) -> tuple[float, str, str]:
+    match = item[0]
+    return (
+        -float(match.final_score),
+        str(match.candidate_name or "").casefold(),
+        str(match.filename or "").casefold(),
+    )
+
+
 def _score_groups(ordered_matches) -> list[list]:
     groups: list[list] = []
     for item in ordered_matches:
-        score = float(item[0].final_score)
         if not groups:
             groups.append([item])
             continue
-        group_score = float(groups[-1][0][0].final_score)
-        if abs(group_score - score) <= TIE_SCORE_TOLERANCE:
+        group_score = _display_score(groups[-1][0])
+        if group_score == _display_score(item):
             groups[-1].append(item)
         else:
             groups.append([item])
     return groups
+
+
+def _display_score(item) -> float:
+    return round(float(item[0].final_score), DISPLAY_SCORE_DECIMALS)

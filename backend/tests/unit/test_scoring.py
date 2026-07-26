@@ -479,3 +479,33 @@ def test_scoring_engine_hides_irrelevant_or_weak_retrieved_evidence() -> None:
 
     assert [evidence.source for evidence in match.evidence] == ["experience"]
     assert match.evidence[0].score == 0.31
+
+
+def test_responsibility_score_uses_stable_document_sections_over_rag_topk() -> None:
+    cv = StructuredCV(candidate_name="Candidat")
+    job = StructuredJobDescription(
+        responsibilities=["Piloter le workstream BI/Data."],
+    )
+    sections = {
+        "experience": "Pilotage du workstream BI/Data avec coordination projet, reporting, dashboard et KPI data.",
+    }
+    weak_rag = [
+        {
+            "text": "Power BI seulement.",
+            "score": 0.95,
+            "metadata": {"section": "experience"},
+        }
+    ]
+    strong_rag = [
+        {
+            "text": "Pilotage du workstream BI/Data avec reporting dashboard KPI.",
+            "score": 0.95,
+            "metadata": {"section": "experience"},
+        }
+    ]
+
+    weak_match = ScoringEngine().score_candidate("cv.txt", cv, job, weak_rag, sections)
+    strong_match = ScoringEngine().score_candidate("cv.txt", cv, job, strong_rag, sections)
+
+    assert weak_match.final_score == strong_match.final_score
+    assert weak_match.category_scores[0].score == strong_match.category_scores[0].score

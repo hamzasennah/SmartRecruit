@@ -1,3 +1,5 @@
+import re
+
 from app.schemas.matching import CandidateMatch, CategoryScore, Evidence
 from app.services.matching.certification_matcher import match_certifications_and_domains
 from app.services.matching.education_matcher import match_education
@@ -11,15 +13,19 @@ from app.services.scoring.weights import load_scoring_weights
 
 DISPLAY_EVIDENCE_SECTIONS = {"experience", "experiences", "projects", "responsibilities", "skills"}
 MIN_DISPLAY_EVIDENCE_SCORE = 0.2
+EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+URL_PATTERN = re.compile(r"\b(?:https?://|www\.)[^\s<>()]+", re.IGNORECASE)
+PHONE_PATTERN = re.compile(r"(?<![\w%])(?:\+?\d[\d\s()./-]{7,}\d)(?![\w%])")
 
 
 class ScoringEngine:
-    def score_candidate(self, filename, cv, job, retrieved_evidence=None) -> CandidateMatch:
+    def score_candidate(self, filename, cv, job, retrieved_evidence=None, document_sections=None) -> CandidateMatch:
         weights = load_scoring_weights()
+        responsibility_evidence = _section_evidence(filename, document_sections) or retrieved_evidence
         results = {
             "technical_skills": match_skills(cv, job),
             "experience": match_experience(cv, job),
-            "responsibilities": match_responsibilities(cv, job, retrieved_evidence),
+            "responsibilities": match_responsibilities(cv, job, responsibility_evidence),
             "education": match_education(cv, job),
             "languages": match_languages(cv, job),
             "certifications_domains": match_certifications_and_domains(cv, job),
@@ -64,6 +70,32 @@ def _category(name, result, weights, applicable_results) -> CategoryScore:
     )
 
 
+def _section_evidence(filename: str, document_sections: dict[str, str] | None) -> list[dict]:
+    if not document_sections:
+        return []
+    evidence = []
+    for section, text in sorted(document_sections.items()):
+        normalized_section = normalize_text(section)
+        if normalized_section not in DISPLAY_EVIDENCE_SECTIONS:
+            continue
+        stripped = str(text).strip()
+        if len(stripped) < 20:
+            continue
+        evidence.append(
+            {
+                "text": stripped,
+                "score": 1.0,
+                "metadata": {
+                    "document_id": filename,
+                    "section": normalized_section,
+                    "chunk_index": 0,
+                    "source": "document_section",
+                },
+            }
+        )
+    return evidence
+
+
 def _clean_retrieved_evidence(rows: list[dict]) -> list[Evidence]:
     evidence: list[Evidence] = []
     for item in rows:
@@ -75,9 +107,23 @@ def _clean_retrieved_evidence(rows: list[dict]) -> list[Evidence]:
         evidence.append(
             Evidence(
                 source=section,
-                text=str(item.get("text", "")),
+                text=redact_personal_identifiers(str(item.get("text", ""))),
                 score=score,
                 metadata=metadata,
             )
         )
     return evidence[:8]
+
+
+def redact_personal_identifiers(text: str) -> str:
+    redacted = EMAIL_PATTERN.sub("[email masque]", text)
+    redacted = URL_PATTERN.sub("[url masquee]", redacted)
+    return PHONE_PATTERN.sub(_redact_phone_match, redacted)
+
+
+def _redact_phone_match(match: re.Match) -> str:
+    value = match.group(0)
+    digit_count = len(re.sub(r"\D", "", value))
+    if 9 <= digit_count <= 15:
+        return "[telephone masque]"
+    return value

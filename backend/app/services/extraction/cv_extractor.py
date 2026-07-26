@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from app.config import settings
+from app.core.model_audit import model_call_context
 from app.schemas.cv import Experience, Language, StructuredCV
 from app.schemas.document import DocumentText
 from app.schemas.job import StructuredJobDescription
@@ -21,7 +22,7 @@ from app.services.extraction.coercion import (
 from app.services.extraction.output_validator import parse_json_payload, validate_model
 from app.services.extraction.prompts import CV_EXTRACTION_PROMPT
 from app.services.normalization.education_normalizer import normalize_education_level
-from app.services.normalization.language_normalizer import normalize_language, normalize_language_level
+from app.services.normalization.language_normalizer import language_rank, normalize_language, normalize_language_level
 from app.services.normalization.skill_normalizer import aliases_for_skill, normalize_skill_list
 from app.services.normalization.text_normalizer import normalize_text
 from app.services.rules.domain_rules import get_domain_rule_section
@@ -67,7 +68,8 @@ class CVExtractor:
         self._llm = llm_client
 
     def extract(self, document: DocumentText) -> StructuredCV:
-        raw_payload = self._llm.generate_json(CV_EXTRACTION_PROMPT.format(text=_llm_input_text(document)))
+        with model_call_context(stage="cv_extraction", document_role="cv", document_filename=document.filename):
+            raw_payload = self._llm.generate_json(CV_EXTRACTION_PROMPT.format(text=_llm_input_text(document)))
         cv = validate_model(_coerce_cv_payload(raw_payload), StructuredCV)
 
         cv.skills.technical = normalize_skill_list(cv.skills.technical)
@@ -272,8 +274,9 @@ def enrich_languages_from_raw_text(cv: StructuredCV, raw_text: str) -> Structure
             language = Language(language=canonical)
             cv.languages.append(language)
             by_language[canonical] = language
-        if not language.normalized_level:
-            language.normalized_level = _infer_language_level_from_window(normalized_text, match)
+        inferred_level = _infer_language_level_from_window(normalized_text, match)
+        if inferred_level and language_rank(inferred_level) > language_rank(language.normalized_level):
+            language.normalized_level = inferred_level
     return cv
 
 
@@ -311,14 +314,31 @@ def enrich_cv_with_job_skill_evidence(
     normalized_text = normalize_text(raw_text)
     technical = list(cv.skills.technical)
     tools = list(cv.skills.tools)
-    existing = set(normalize_skill_list(technical + tools))
     requested_skills = normalize_skill_list(
         job.required_skills.mandatory + job.required_skills.preferred
     )
-    for skill in requested_skills:
+    verified_requested = {
+        skill
+        for skill in requested_skills
+        if _skill_is_explicitly_written(skill, normalized_text)
+    }
+    technical = _drop_unverified_requested_skills(technical, requested_skills, verified_requested)
+    tools = _drop_unverified_requested_skills(tools, requested_skills, verified_requested)
+    for experience in cv.experiences:
+        experience.skills_used = _drop_unverified_requested_skills(
+            experience.skills_used,
+            requested_skills,
+            verified_requested,
+        )
+    for project in cv.projects:
+        project.skills_used = _drop_unverified_requested_skills(
+            project.skills_used,
+            requested_skills,
+            verified_requested,
+        )
+    existing = set(normalize_skill_list(technical + tools))
+    for skill in sorted(verified_requested):
         if skill in existing:
-            continue
-        if not _skill_is_explicitly_written(skill, normalized_text):
             continue
         if skill in RAW_TEXT_TOOL_SKILLS:
             tools.append(skill)
@@ -328,6 +348,19 @@ def enrich_cv_with_job_skill_evidence(
     cv.skills.technical = normalize_skill_list(technical)
     cv.skills.tools = normalize_skill_list(tools)
     return cv
+
+
+def _drop_unverified_requested_skills(
+    skills: list[str],
+    requested_skills: list[str],
+    verified_requested: set[str],
+) -> list[str]:
+    requested = set(requested_skills)
+    return [
+        skill
+        for skill in normalize_skill_list(skills)
+        if skill not in requested or skill in verified_requested
+    ]
 
 
 def _skill_is_explicitly_written(skill: str, normalized_text: str) -> bool:

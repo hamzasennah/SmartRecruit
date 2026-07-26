@@ -201,7 +201,7 @@ class PostgresVectorStore:
                     "score": _cosine(query_vector, vector),
                 }
             )
-        return sorted(scored, key=lambda item: item["score"], reverse=True)[:top_k]
+        return sorted(scored, key=_search_sort_key)[:top_k]
 
     def _search_pgvector(self, namespace: str, query_vector: list[float], top_k: int, filters: dict | None = None) -> list[dict]:
         filters = filters or {}
@@ -223,7 +223,7 @@ class PostgresVectorStore:
                    1 - (embedding <=> CAST(:query_vector AS vector)) AS score
             FROM vector_chunks
             WHERE {" AND ".join(where)}
-            ORDER BY embedding <=> CAST(:query_vector AS vector)
+            ORDER BY embedding <=> CAST(:query_vector AS vector), document_id ASC, section ASC, chunk_index ASC, id ASC
             LIMIT :top_k
             """
         )
@@ -259,6 +259,17 @@ def _cosine(left: list[float], right: list[float]) -> float:
     left_norm = sum(a * a for a in left) ** 0.5
     right_norm = sum(b * b for b in right) ** 0.5
     return numerator / (left_norm * right_norm) if left_norm and right_norm else 0.0
+
+
+def _search_sort_key(item: dict) -> tuple[float, str, str, int, str]:
+    metadata = item.get("metadata", {}) or {}
+    return (
+        -float(item.get("score", 0.0)),
+        str(metadata.get("document_id", "")).casefold(),
+        str(metadata.get("section", "")).casefold(),
+        int(metadata.get("chunk_index", 0)),
+        str(item.get("id", "")).casefold(),
+    )
 
 
 def _vector_literal(vector: list[float]) -> str:

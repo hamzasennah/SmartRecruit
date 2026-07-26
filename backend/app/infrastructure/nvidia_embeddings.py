@@ -9,6 +9,7 @@ import httpx
 
 from app.config import Settings
 from app.core.exceptions import ExternalServiceError
+from app.core.model_audit import provider_request_id, record_model_call, utc_now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +69,33 @@ class NvidiaEmbeddingClient:
         }
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 2):
+            started_at = utc_now_iso()
+            started_perf = time.perf_counter()
+            response: httpx.Response | None = None
             try:
                 response = httpx.post(url, headers=headers, json=payload, timeout=self.timeout)
+                latency_ms = (time.perf_counter() - started_perf) * 1000
+                input_values = payload.get("input", [])
+                record_model_call(
+                    provider="nvidia",
+                    call_type="embedding",
+                    method="POST",
+                    url=url,
+                    endpoint=path,
+                    model=str(payload.get("model", self.model)),
+                    started_at=started_at,
+                    latency_ms=latency_ms,
+                    attempt=attempt,
+                    max_attempts=self.max_retries + 1,
+                    status_code=response.status_code,
+                    provider_request_id_value=provider_request_id(response.headers),
+                    success=200 <= response.status_code < 400,
+                    input_summary={
+                        "input_type": payload.get("input_type"),
+                        "input_count": len(input_values) if isinstance(input_values, list) else 1,
+                        "dimensions": payload.get("dimensions"),
+                    },
+                )
                 if response.status_code in {429, 500, 502, 503, 504} and attempt <= self.max_retries:
                     logger.warning(
                         "NVIDIA embeddings tentative %s/%s echouee avec HTTP %s.",
@@ -82,6 +108,29 @@ class NvidiaEmbeddingClient:
                 response.raise_for_status()
                 return response.json()
             except (httpx.HTTPError, json.JSONDecodeError) as exc:
+                if response is None:
+                    latency_ms = (time.perf_counter() - started_perf) * 1000
+                    input_values = payload.get("input", [])
+                    record_model_call(
+                        provider="nvidia",
+                        call_type="embedding",
+                        method="POST",
+                        url=url,
+                        endpoint=path,
+                        model=str(payload.get("model", self.model)),
+                        started_at=started_at,
+                        latency_ms=latency_ms,
+                        attempt=attempt,
+                        max_attempts=self.max_retries + 1,
+                        success=False,
+                        error_type=type(exc).__name__,
+                        error_message=str(exc),
+                        input_summary={
+                            "input_type": payload.get("input_type"),
+                            "input_count": len(input_values) if isinstance(input_values, list) else 1,
+                            "dimensions": payload.get("dimensions"),
+                        },
+                    )
                 last_error = exc
                 if attempt <= self.max_retries:
                     logger.warning(

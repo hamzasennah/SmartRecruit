@@ -9,7 +9,12 @@ from dotenv import load_dotenv
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = BACKEND_ROOT.parent
 
-load_dotenv(BACKEND_ROOT / ".env")
+
+def load_backend_env(path: Path = BACKEND_ROOT / ".env") -> None:
+    load_dotenv(path, encoding="utf-8-sig")
+
+
+load_backend_env()
 
 
 @dataclass(frozen=True)
@@ -137,6 +142,10 @@ class Settings:
     @property
     def vector_backend(self) -> str:
         return os.getenv("VECTOR_BACKEND", "pgvector").strip().lower()
+
+    @property
+    def model_audit_log_path(self) -> str:
+        return os.getenv("MODEL_AUDIT_LOG_PATH", "").strip()
 
 
 settings = Settings()

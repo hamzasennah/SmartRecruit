@@ -580,6 +580,46 @@ h1 {
   color: #785913;
 }
 
+.language-levels {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #cfe1d9;
+  border-radius: 8px;
+  background: #f7fbf9;
+}
+
+.language-levels h4,
+.language-warning h5 {
+  margin-bottom: 8px;
+  color: #24493f;
+}
+
+.language-levels ul,
+.language-warning ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.language-levels li {
+  margin: 6px 0;
+}
+
+.language-levels li span {
+  display: inline-flex;
+  margin-left: 10px;
+  color: #4f625a;
+}
+
+.language-warning {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #dce5df;
+}
+
+.language-warning h5 {
+  font-size: 0.9rem;
+}
+
 .detail-json,
 .evidence-details {
   margin-top: 14px;
@@ -641,6 +681,21 @@ h1 {
 .evidence-details p {
   margin: 8px 0 0;
   line-height: 1.42;
+}
+
+.evidence-more,
+.evidence-full {
+  margin-top: 10px;
+}
+
+.evidence-full {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f7faf8;
+}
+
+.evidence-full p {
+  margin-top: 8px;
 }
 
 .muted {

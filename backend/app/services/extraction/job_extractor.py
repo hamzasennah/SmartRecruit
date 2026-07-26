@@ -4,6 +4,7 @@ import logging
 import re
 
 from app.config import settings
+from app.core.model_audit import model_call_context
 from app.schemas.document import DocumentText
 from app.schemas.job import LanguageRequirement, StructuredJobDescription
 from app.services.extraction.coercion import (
@@ -59,13 +60,18 @@ class JobExtractor:
         self._llm = llm_client
 
     def extract(self, document: DocumentText) -> StructuredJobDescription:
-        raw_payload = self._llm.generate_json(JOB_EXTRACTION_PROMPT.format(text=_llm_input_text(document)))
+        with model_call_context(stage="job_extraction", document_role="job", document_filename=document.filename):
+            raw_payload = self._llm.generate_json(JOB_EXTRACTION_PROMPT.format(text=_llm_input_text(document)))
         job = validate_model(_coerce_job_payload(raw_payload), StructuredJobDescription)
 
         job.required_skills.mandatory = normalize_skill_list(job.required_skills.mandatory)
         job.required_skills.preferred = normalize_skill_list(job.required_skills.preferred)
         job.required_skills.soft = normalize_skill_list(job.required_skills.soft)
         _apply_job_text_rules(job, document.text)
+        job.experience_requirements.required_domains = _clean_required_domains(
+            document.text,
+            job.experience_requirements.required_domains,
+        )
         job.education_requirements.minimum_level = normalize_education_level(job.education_requirements.minimum_level) or ""
         for language in job.language_requirements:
             language.language = normalize_language(language.language)
@@ -180,6 +186,21 @@ LANGUAGE_TOKEN_MAP = _job_rule_map("language_token_map")
 LANGUAGE_LEVEL_TERMS = set(_job_rule_list("language_level_terms"))
 SOFT_SKILL_TERMS = tuple(_job_rule_list("soft_skill_terms"))
 TECHNICAL_TEXT_RULES = _technical_text_rules()
+DOMAIN_REQUIREMENT_SIGNALS = (
+    "required domain",
+    "domain required",
+    "required industry",
+    "industry required",
+    "domaine requis",
+    "domaines requis",
+    "secteur requis",
+    "secteurs requis",
+    "experience requise dans le domaine",
+    "experience obligatoire dans le domaine",
+    "experience requise dans le secteur",
+    "experience obligatoire dans le secteur",
+    "connaissance obligatoire du secteur",
+)
 
 
 def _apply_job_text_rules(job: StructuredJobDescription, text: str) -> None:
@@ -221,6 +242,22 @@ def _apply_job_text_rules(job: StructuredJobDescription, text: str) -> None:
     job.required_skills.preferred = normalize_skill_list(preferred)
     job.required_skills.soft = normalize_skill_list(soft)
     _add_language_requirements(job, languages_from_skills, normalized)
+
+
+def _clean_required_domains(text: str, domains: list[str]) -> list[str]:
+    normalized_text = normalize_text(text)
+    if not domains or not _has_explicit_domain_requirement(normalized_text):
+        return []
+    kept: list[str] = []
+    for domain in domains:
+        normalized_domain = normalize_text(domain)
+        if normalized_domain and normalized_domain in normalized_text and normalized_domain not in kept:
+            kept.append(normalized_domain)
+    return kept
+
+
+def _has_explicit_domain_requirement(normalized_text: str) -> bool:
+    return any(signal in normalized_text for signal in DOMAIN_REQUIREMENT_SIGNALS)
 
 
 def _clean_skill_bucket(
