@@ -228,7 +228,7 @@ def _apply_job_text_rules(job: StructuredJobDescription, text: str) -> None:
     languages_from_skills.extend(more_languages + soft_languages)
 
     for skill, (bucket, signals) in TECHNICAL_TEXT_RULES.items():
-        if any(signal in normalized for signal in signals):
+        if any(_contains_technical_signal(normalized, signal) for signal in signals):
             if bucket == "mandatory":
                 mandatory.append(skill)
             else:
@@ -320,12 +320,22 @@ def _language_from_skill(normalized_skill: str) -> str | None:
 def _skill_has_text_evidence(skill: str, normalized_text: str) -> bool:
     if not skill:
         return False
-    if skill in normalized_text:
+    if _contains_technical_signal(normalized_text, skill):
         return True
     for canonical, (_, signals) in TECHNICAL_TEXT_RULES.items():
         if skill == canonical:
-            return any(signal in normalized_text for signal in signals)
+            return any(_contains_technical_signal(normalized_text, signal) for signal in signals)
     return False
+
+
+def _contains_technical_signal(normalized_text: str, signal: str) -> bool:
+    normalized_signal = normalize_text(signal)
+    if not normalized_signal:
+        return False
+    return re.search(
+        rf"(?<![a-z0-9+#]){re.escape(normalized_signal)}(?![a-z0-9+#])",
+        normalized_text,
+    ) is not None
 
 
 def _add_language_requirements(job: StructuredJobDescription, languages: list[str], normalized_text: str) -> None:
@@ -349,7 +359,24 @@ def _infer_job_title(text: str) -> str | None:
             continue
         if normalized.startswith(("mission", "tools", "skills", "competences")):
             return None
-        title_signals = ("analyst", "data analyst", "developpeur", "developer", "engineer", "ingenieur", "consultant")
+        title_signals = (
+            "analyst",
+            "data analyst",
+            "developpeur",
+            "developer",
+            "engineer",
+            "ingenieur",
+            "consultant",
+            "frontend",
+            "backend",
+            "full stack",
+            "fullstack",
+            "software",
+            "support",
+            "chef de projet",
+            "project manager",
+            "mobile",
+        )
         if any(signal in normalized for signal in title_signals):
             return line
     return None

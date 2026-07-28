@@ -84,7 +84,6 @@ La logique complete peut etre presentee comme une chaine fermee:
   \item Le moteur de scoring applique les poids et redistribue les poids des criteres absents.
   \item Le moteur de ranking trie les candidats et gere les ex aequo.
   \item L'API retourne un \texttt{RankingResponse} contenant le classement, les scores, les preuves et les erreurs eventuelles.
-  \item Le script \texttt{analyze\_samples.py} peut appeler l'API, generer \texttt{result.json} et ouvrir \texttt{result\_report.html}.
 \end{enumerate}
 
 \subsection{Point important sur la memoire}
@@ -104,7 +103,7 @@ finally:
     self._vector_store.reset_namespace(namespace)
 \end{lstlisting}
 
-Donc la base vectorielle sert pendant l'analyse, mais elle ne garde pas les resultats pour biaiser le test suivant. Les fichiers \texttt{result.json} et \texttt{result\_report.html}, eux, sont seulement des rapports ecrases ou regeneres par script.
+Donc la base vectorielle sert pendant l'analyse, mais elle ne garde pas les resultats pour biaiser le test suivant. Les resultats persistants sont enregistres via le store configure quand la base le supporte.
 
 \section{Vue generale de l'arbre backend}
 
@@ -200,12 +199,12 @@ NVIDIA_API_KEY=...
 NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
 NVIDIA_LLM_MODEL=meta/llama-3.1-8b-instruct
 NVIDIA_EMBEDDING_MODEL=nvidia/llama-nemotron-embed-1b-v2
-NVIDIA_TEMPERATURE=0
+NVIDIA_TEMPERATURE=0.1
 NVIDIA_SEED=0
 DATABASE_URL=postgresql+psycopg://...
 \end{lstlisting}
 
-\texttt{NVIDIA\_TEMPERATURE=0.1} reduit la variabilite de generation du LLM. Cela ne garantit pas une identite parfaite a 100\%, car un service LLM peut rester legerement non deterministe, mais cela rend les sorties beaucoup plus stables.
+\texttt{NVIDIA\_TEMPERATURE=0.1} conserve une variabilite faible tout en limitant les sorties trop aleatoires. Cela ne garantit pas une identite parfaite a 100\%, car un service LLM distant peut rester legerement non deterministe.
 
 \subsection{\texttt{docker-compose.yml}}
 
@@ -228,7 +227,7 @@ Ce dossier recoit temporairement les fichiers envoyes par l'API. Il sert au mode
 
 \subsection{\texttt{storage/}}
 
-Ce dossier contient des sous-dossiers prevus pour stocker des documents ou des resultats. Dans la logique actuelle, le classement principal est retourne par l'API et les rapports de test sont generes a la racine du backend sous forme de \texttt{result.json} et \texttt{result\_report.html}.
+Ce dossier contient des sous-dossiers prevus pour stocker des documents ou des resultats locaux. Les fichiers generes dans ces sous-dossiers ne doivent pas etre versionnes.
 
 \section{\texttt{app/main.py}: point d'entree FastAPI}
 
@@ -790,13 +789,13 @@ Base.metadata.create_all(bind=engine)
 
 Libere un port occupe. Utile si un ancien serveur FastAPI utilise encore \texttt{8002}.
 
-\subsection{\texttt{analyze\_samples.py}}
+\subsection{\texttt{initialize\_databases.py}}
 
-Script de test complet. Il lit \texttt{samples/fiche\_poste.pdf}, recupere les CV du dossier, appelle l'API FastAPI, sauvegarde le JSON et ouvre le rapport HTML. Il accepte aussi \texttt{--cv-file} et \texttt{--cv-dir} pour tester d'autres fichiers.
+Script d'initialisation base de donnees. Il applique les migrations Alembic necessaires avant l'utilisation de PostgreSQL.
 
 \subsection{\texttt{render\_result\_report.py}}
 
-Convertit \texttt{result.json} en rapport HTML lisible. Il affiche:
+Convertit un JSON de resultat en rapport HTML lisible. Il affiche:
 
 \begin{itemize}
   \item le texte extrait;

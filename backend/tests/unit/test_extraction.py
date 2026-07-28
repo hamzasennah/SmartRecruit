@@ -1,8 +1,10 @@
+import pytest
 from app.schemas.cv import Experience, SkillSet, StructuredCV
 from app.schemas.document import DocumentText
 from app.schemas.job import RequiredSkills, StructuredJobDescription
 from app.services.extraction.cv_extractor import CVExtractor, enrich_cv_with_job_skill_evidence
 from app.services.extraction.job_extractor import JobExtractor
+from app.services.scoring.scoring_engine import ScoringEngine
 
 
 class StaticLLM:
@@ -131,6 +133,199 @@ def test_job_extractor_removes_model_skills_not_proven_in_job_text() -> None:
     assert "django" not in job.required_skills.preferred
     assert job.required_skills.mandatory == ["power bi", "excel", "snowflake", "dashboard", "kpi", "azure"]
     assert job.required_skills.preferred == ["foundry", "spm"]
+
+
+def test_job_extractor_uses_bounded_technical_signals() -> None:
+    text = """
+    Developpeur Frontend
+    Stack obligatoire : JavaScript, React, HTML et CSS.
+    """
+    document = DocumentText(filename="frontend.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "job_title": "Developpeur Frontend",
+        "required_skills": {"mandatory": [], "preferred": [], "soft": []},
+    }
+
+    job = JobExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert "javascript" in job.required_skills.mandatory
+    assert "java" not in job.required_skills.mandatory
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        {
+            "name": "backend",
+            "cv_title": "Developpeur Backend",
+            "job_title": "Developpeur Backend",
+            "cv_text": """
+            Nadia Backend
+            Developpeur Backend Java Spring Boot.
+            API REST, Docker, Kubernetes, PostgreSQL, Git et CI/CD.
+            """,
+            "job_text": """
+            Developpeur Backend
+            Competences obligatoires : Java, Spring Boot, API REST, Docker, PostgreSQL, Git.
+            """,
+            "expected_cv_skills": {"java", "spring boot", "api rest", "docker", "kubernetes", "postgresql", "git", "ci cd"},
+            "expected_job_skills": {"java", "spring boot", "api rest", "docker", "postgresql", "git"},
+            "minimum_score": 95.0,
+        },
+        {
+            "name": "support",
+            "cv_title": "Support IT",
+            "job_title": "Technicien Support IT",
+            "cv_text": """
+            Yassine Support IT
+            Support utilisateurs ITIL avec ServiceNow, gestion de tickets, Active Directory et Office 365.
+            Administration Windows Server et Linux, reseaux TCP/IP, DNS, DHCP, VPN, firewall, SLA et gestion des incidents.
+            """,
+            "job_text": """
+            Technicien Support IT
+            Requis : ITIL, ticketing ServiceNow, Active Directory, Office 365, networking, DNS, DHCP, VPN, incident management.
+            """,
+            "expected_cv_skills": {
+                "itil",
+                "ticketing",
+                "servicenow",
+                "active directory",
+                "office 365",
+                "windows server",
+                "linux",
+                "networking",
+                "tcp ip",
+                "dns",
+                "dhcp",
+                "vpn",
+                "firewall",
+                "sla",
+                "incident management",
+            },
+            "expected_job_skills": {
+                "itil",
+                "ticketing",
+                "servicenow",
+                "active directory",
+                "office 365",
+                "networking",
+                "dns",
+                "dhcp",
+                "vpn",
+                "incident management",
+            },
+            "minimum_score": 95.0,
+        },
+        {
+            "name": "project_manager",
+            "cv_title": "Chef de projet Agile",
+            "job_title": "Chef de projet",
+            "cv_text": """
+            Salma Chef de projet
+            Pilotage Agile Scrum et Kanban avec Jira et Confluence.
+            Gestion des risques, stakeholder management, requirements gathering, change management,
+            roadmap, planning et budget tracking.
+            """,
+            "job_text": """
+            Chef de projet / Project Manager
+            Requis : Agile, Scrum, Jira, gestion des risques, stakeholder management,
+            recueil des besoins, conduite du changement, roadmap et planning.
+            """,
+            "expected_cv_skills": {
+                "agile",
+                "scrum",
+                "kanban",
+                "jira",
+                "confluence",
+                "risk management",
+                "stakeholder management",
+                "requirements gathering",
+                "change management",
+                "roadmap",
+                "planning",
+                "budget tracking",
+            },
+            "expected_job_skills": {
+                "agile",
+                "scrum",
+                "jira",
+                "risk management",
+                "stakeholder management",
+                "requirements gathering",
+                "change management",
+                "roadmap",
+                "planning",
+            },
+            "minimum_score": 95.0,
+        },
+    ],
+)
+def test_non_data_profiles_detect_representative_skills_and_score_coherently(case: dict) -> None:
+    cv_document = DocumentText(
+        filename=f"{case['name']}_cv.txt",
+        text=case["cv_text"],
+        char_count=len(case["cv_text"]),
+    )
+    cv_payload = {
+        "candidate_name": f"Candidat {case['name']}",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [{"job_title": case["cv_title"], "missions": [case["cv_text"]]}],
+        "education": [],
+        "languages": [],
+    }
+    job_document = DocumentText(
+        filename=f"{case['name']}_job.txt",
+        text=case["job_text"],
+        char_count=len(case["job_text"]),
+    )
+    job_payload = {
+        "job_title": case["job_title"],
+        "required_skills": {"mandatory": [], "preferred": [], "soft": []},
+    }
+
+    cv = CVExtractor(StaticLLM(cv_payload)).extract(cv_document)
+    job = JobExtractor(StaticLLM(job_payload)).extract(job_document)
+    score = ScoringEngine().score_candidate(cv_document.filename, cv, job, [])
+
+    detected_cv_skills = set(cv.skills.technical + cv.skills.tools)
+    assert case["expected_cv_skills"].issubset(detected_cv_skills)
+    assert case["expected_job_skills"].issubset(set(job.required_skills.mandatory))
+    assert score.final_score >= case["minimum_score"]
+
+
+def test_non_data_profile_scoring_is_stable_across_repeated_runs() -> None:
+    text = """
+    Developpeur Backend
+    Java, Spring Boot, API REST, Docker, PostgreSQL et Git.
+    """
+    cv_payload = {
+        "candidate_name": "Candidat Stable",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [{"job_title": "Developpeur Backend", "missions": [text]}],
+    }
+    job_payload = {
+        "job_title": "Developpeur Backend",
+        "required_skills": {"mandatory": [], "preferred": [], "soft": []},
+    }
+
+    results = []
+    for _ in range(3):
+        cv_document = DocumentText(filename="stable_cv.txt", text=text, char_count=len(text))
+        job_document = DocumentText(filename="stable_job.txt", text=text, char_count=len(text))
+        cv = CVExtractor(StaticLLM(cv_payload)).extract(cv_document)
+        job = JobExtractor(StaticLLM(job_payload)).extract(job_document)
+        score = ScoringEngine().score_candidate(cv_document.filename, cv, job, [])
+        results.append(
+            {
+                "cv_skills": cv.skills.technical + cv.skills.tools,
+                "job_mandatory": job.required_skills.mandatory,
+                "score": score.final_score,
+                "matched": score.category_scores[0].matched,
+                "missing": score.category_scores[0].missing,
+            }
+        )
+
+    assert results[0] == results[1] == results[2]
 
 
 def test_job_extractor_accepts_model_lists_returned_as_objects() -> None:

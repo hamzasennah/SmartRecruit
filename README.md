@@ -124,13 +124,16 @@ NVIDIA_TIMEOUT=120
 NVIDIA_MAX_RETRIES=2
 NVIDIA_RETRY_DELAY=2
 NVIDIA_MAX_TOKENS=8192
-NVIDIA_TEMPERATURE=0
+NVIDIA_TEMPERATURE=0.1
 NVIDIA_SEED=0
 NVIDIA_EMBEDDING_DIMENSIONS=
 DATABASE_URL=postgresql+psycopg://smartrecruit:change_me@localhost:5432/smartrecruit
 MAX_UPLOAD_MB=20
+MAX_UPLOAD_BYTES=
 MAX_TOTAL_UPLOAD_MB=100
+MAX_TOTAL_UPLOAD_BYTES=
 MAX_CV_FILES=20
+UPLOAD_CHUNK_BYTES=1048576
 SMARTRECRUIT_API_KEY=change_me_for_local_development
 RATE_LIMIT_REQUESTS=20
 RATE_LIMIT_WINDOW_SECONDS=60
@@ -138,11 +141,14 @@ JOB_WORKER_COUNT=2
 EMBEDDING_BATCH_SIZE=32
 LLM_INPUT_CHAR_LIMIT=12000
 VECTOR_BACKEND=pgvector
+MODEL_AUDIT_LOG_PATH=storage/model_audit.jsonl
+SMARTRECRUIT_RUN_INTEGRATION=0
 ```
 
 Le frontend doit envoyer la meme cle API au backend :
 
 ```env
+VITE_API_URL=
 VITE_SMARTRECRUIT_API_KEY=change_me_for_local_development
 VITE_MAX_UPLOAD_MB=20
 VITE_MAX_TOTAL_UPLOAD_MB=100
@@ -243,5 +249,5 @@ pytest tests/integration
 
 - Les fichiers envoyes ne sont pas conserves apres l'analyse.
 - Les logs doivent rester sans texte de CV ni contenu de fiche de poste ; ils utilisent des identifiants de correlation (`X-Request-ID`, `analysis_id`).
-- Les dependances Python de production sont dans `backend/requirements.txt`, les dependances de developpement dans `backend/requirements-dev.txt`, et les verrous dans `backend/requirements.lock` / `backend/requirements-dev.lock`.
+- Les dependances Python de production sont dans `backend/requirements.txt` et les dependances de developpement dans `backend/requirements-dev.txt`.
 - PyMuPDF est utilise pour l'extraction PDF ; verifier sa licence et ses conditions de distribution avant tout usage commercial ou redistribution.

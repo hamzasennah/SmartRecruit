@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -5,10 +7,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import documents, health, ranking
 from app.config import settings
+from app.core.config_validation import validate_startup_settings
 from app.core.logging_config import configure_logging
 from app.core.request_context import request_id_context
 
 configure_logging()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    validate_startup_settings(settings)
+    yield
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -17,6 +27,7 @@ app = FastAPI(
         "Backend SmartRecruit pour extraction structuree, normalisation, "
         "matching explicable, retrieval semantique et classement de CV."
     ),
+    lifespan=lifespan,
 )
 
 app.add_middleware(

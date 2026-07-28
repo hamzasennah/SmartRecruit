@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from app.api.routes import ranking
+from app.core.config_validation import ConfigValidationError
 from app.core.security import rate_limiter
 from app.main import app
 from app.schemas.job import StructuredJobDescription
@@ -31,7 +33,7 @@ def _files(cv_count: int = 1, cv_payload: bytes = b"Candidate") -> list[tuple[st
 
 
 def test_ranking_requires_api_key(monkeypatch) -> None:
-    monkeypatch.setenv("SMARTRECRUIT_API_KEY", "secret")
+    monkeypatch.setenv("SMARTRECRUIT_API_KEY", "secret-key")
     rate_limiter.reset()
 
     with TestClient(app) as client:
@@ -44,10 +46,9 @@ def test_ranking_rejects_when_auth_is_not_configured(monkeypatch) -> None:
     monkeypatch.delenv("SMARTRECRUIT_API_KEY", raising=False)
     rate_limiter.reset()
 
-    with TestClient(app) as client:
-        response = client.post("/api/ranking/analyze", files=_files(), data={"top_k": "3"})
-
-    assert response.status_code == 503
+    with pytest.raises(ConfigValidationError, match="SMARTRECRUIT_API_KEY"):
+        with TestClient(app):
+            pass
 
 
 def test_ranking_enforces_cv_quota_before_pipeline(monkeypatch) -> None:

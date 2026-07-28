@@ -73,7 +73,7 @@ class Settings:
 
     @property
     def llm_temperature(self) -> float:
-        return float(os.getenv("NVIDIA_TEMPERATURE", "0"))
+        return float(os.getenv("NVIDIA_TEMPERATURE", "0.1"))
 
     @property
     def llm_seed(self) -> int | None:

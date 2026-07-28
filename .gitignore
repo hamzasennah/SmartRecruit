@@ -13,6 +13,9 @@ backend/.venv-vllm/
 
 backend/__pycache__/
 backend/.pytest_cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 __pycache__/
 *.pyc
 
@@ -29,7 +32,18 @@ backend/score_diagnostic*.log
 backend/storage/documents/*
 backend/storage/results/*
 backend/storage/*.log
+backend/storage/*.jsonl
 
 frontend/node_modules/
 frontend/dist/
 frontend/tsconfig.tsbuildinfo
+
+# Sorties de compilation LaTeX locales
+*.aux
+*.fls
+*.fdb_latexmk
+*.log
+*.out
+*.synctex.gz
+*.toc
+SmartRecruit_Documentation_Complete.pdf
