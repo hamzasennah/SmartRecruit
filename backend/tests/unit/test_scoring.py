@@ -509,3 +509,6 @@ def test_responsibility_score_uses_stable_document_sections_over_rag_topk() -> N
 
     assert weak_match.final_score == strong_match.final_score
     assert weak_match.category_scores[0].score == strong_match.category_scores[0].score
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour scoring. Il protege le comportement existant pendant les refactors sans appeler les services externes.

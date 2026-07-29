@@ -11,6 +11,8 @@ class ConfigValidationError(RuntimeError):
 
 def validate_startup_settings(settings: Settings) -> None:
     errors: list[str] = []
+    # Startup validation prefers explicit failure over a half-working backend
+    # that reaches NVIDIA/PostgreSQL only after the user starts an analysis.
     _require_plausible_nvidia_key("NVIDIA_API_KEY", settings.nvidia_api_key, errors)
     _require_url("NVIDIA_BASE_URL", settings.nvidia_base_url, errors)
     _require_url("NVIDIA_EMBEDDING_BASE_URL", settings.embedding_base_url, errors)
@@ -18,6 +20,8 @@ def validate_startup_settings(settings: Settings) -> None:
     _require_text("NVIDIA_EMBEDDING_MODEL", settings.embedding_model, errors)
     _require_database_url("DATABASE_URL", settings.database_url, errors)
     _require_text("SMARTRECRUIT_API_KEY", settings.smartrecruit_api_key, errors, min_length=8)
+    # Both vector modes are intentionally accepted; deleting one requires a
+    # separate migration decision because current environments may use json.
     _require_choice("VECTOR_BACKEND", settings.vector_backend, {"pgvector", "json"}, errors)
     _require_positive("NVIDIA_TIMEOUT", settings.llm_timeout, errors)
     _require_positive_int("NVIDIA_MAX_RETRIES", settings.llm_max_retries, errors, allow_zero=True)
@@ -63,6 +67,7 @@ def _require_plausible_nvidia_key(name: str, value: str, errors: list[str]) -> N
     if "your_" in lowered or "change_me" in lowered or "placeholder" in lowered:
         errors.append(f"{name} contient une valeur placeholder.")
     if not value.startswith("nvapi-"):
+        # This is a plausibility check, not an online credential validation.
         errors.append(f"{name} doit commencer par 'nvapi-' pour une cle NVIDIA plausible.")
 
 
@@ -98,3 +103,6 @@ def _require_positive_int(name: str, value: int, errors: list[str], *, allow_zer
 def _require_range(name: str, value: float, minimum: float, maximum: float, errors: list[str]) -> None:
     if value < minimum or value > maximum:
         errors.append(f"{name} doit etre compris entre {minimum:g} et {maximum:g}.")
+
+# Role dans le projet:
+# Ce fichier valide la configuration au demarrage. Il protege le pipeline contre des erreurs tardives de secrets, URLs, limites ou backend vectoriel.

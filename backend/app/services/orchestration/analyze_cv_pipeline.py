@@ -11,3 +11,6 @@ class AnalyzeCVPipeline:
     def run(self, path, filename_override: str | None = None):
         document = self._parser.extract(path, kind=DocumentKind.cv, filename_override=filename_override)
         return document, self._extractor.extract(document)
+
+# Role dans le projet:
+# Ce fichier assemble parsing et extraction d'un CV. Le BatchRankingPipeline l'appelle pour traiter chaque candidat.

@@ -21,6 +21,9 @@ PHONE_PATTERN = re.compile(r"(?<![\w%])(?:\+?\d[\d\s()./-]{7,}\d)(?![\w%])")
 class ScoringEngine:
     def score_candidate(self, filename, cv, job, retrieved_evidence=None, document_sections=None) -> CandidateMatch:
         weights = load_scoring_weights()
+        # Prefer parsed document sections over vector retrieval when available:
+        # they are deterministic evidence, while RAG snippets depend on chunking
+        # and embedding similarity.
         responsibility_evidence = _section_evidence(filename, document_sections) or retrieved_evidence
         results = {
             "technical_skills": match_skills(cv, job),
@@ -36,6 +39,9 @@ class ScoringEngine:
             for name, result in results.items()
             if result.get("applicable", True)
         }
+        # Non-applicable categories return 0.0 for transport consistency, but
+        # they are removed here so an unknown requirement is not treated as a
+        # real penalty in the final weighted score.
         rows = [
             _category(name, result, weights, applicable_results)
             for name, result in applicable_results.items()
@@ -53,6 +59,9 @@ class ScoringEngine:
 
 
 def _category(name, result, weights, applicable_results) -> CategoryScore:
+    # Fixed base weights are redistributed across applicable categories only.
+    # This keeps totals comparable, but it also means category importance is
+    # static and not yet calibrated per job family.
     active_weight_sum = sum(weights.get(category, 0.0) for category in applicable_results) or 1.0
     weight = weights.get(name, 0.0) / active_weight_sum
     score = float(result["score"])
@@ -102,6 +111,9 @@ def _clean_retrieved_evidence(rows: list[dict]) -> list[Evidence]:
         metadata = item.get("metadata", {}) or {}
         section = normalize_text(str(metadata.get("section", "retrieval")))
         score = float(item.get("score", 0.0))
+        # Low-similarity evidence is hidden from the UI to avoid weak excerpts
+        # looking authoritative; the threshold is heuristic rather than a
+        # calibrated semantic confidence score.
         if section not in DISPLAY_EVIDENCE_SECTIONS or score < MIN_DISPLAY_EVIDENCE_SCORE:
             continue
         evidence.append(
@@ -127,3 +139,6 @@ def _redact_phone_match(match: re.Match) -> str:
     if 9 <= digit_count <= 15:
         return "[telephone masque]"
     return value
+
+# Role dans le projet:
+# Ce fichier combine tous les matchers en score final. Il applique les poids, filtre les categories non applicables et prepare les preuves.

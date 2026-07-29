@@ -17,3 +17,6 @@ def get_batch_ranking_pipeline() -> BatchRankingPipeline:
         embedding_client=get_embedding_client(settings),
         vector_store=get_vector_store(settings),
     )
+
+# Role dans le projet:
+# Ce fichier assemble les dependances principales. Les routes l'utilisent comme point unique de composition des parsers, clients et stores.

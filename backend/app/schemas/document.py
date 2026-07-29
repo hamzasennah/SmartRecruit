@@ -16,3 +16,6 @@ class DocumentText(BaseModel):
     char_count: int = 0
     sections: dict[str, str] = Field(default_factory=dict)
 
+
+# Role dans le projet:
+# Ce fichier definit le texte de document parse. Il relie upload/parsing aux extracteurs et au chunking RAG.

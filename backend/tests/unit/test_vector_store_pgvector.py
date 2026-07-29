@@ -15,3 +15,6 @@ def test_search_sort_key_is_deterministic_for_equal_scores() -> None:
     ordered = sorted(rows, key=_search_sort_key)
 
     assert [row["id"] for row in ordered] == ["a", "b", "c"]
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour vector store pgvector. Il protege le comportement existant pendant les refactors sans appeler les services externes.

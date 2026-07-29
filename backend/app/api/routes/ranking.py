@@ -38,6 +38,8 @@ async def analyze_ranking(
     token = analysis_id_context.set(analysis_id)
     upload_dir = create_analysis_upload_dir(analysis_id)
     try:
+        # Upload validation happens before parsing/model calls so unsafe or
+        # oversized input fails cheaply and consistently.
         ensure_cv_quota(cv_files)
         job_upload = await save_upload(job_file, upload_dir, "job")
         cv_uploads = [await save_upload(file, upload_dir, "cv") for file in cv_files]
@@ -51,6 +53,8 @@ async def analyze_ranking(
             },
         )
         result = await run_in_threadpool(
+            # The ranking pipeline performs blocking parsing, DB, and provider
+            # calls, so it is moved off the event loop.
             get_batch_ranking_pipeline().run,
             job_upload,
             cv_uploads,
@@ -82,6 +86,8 @@ async def create_ranking_job(
 ) -> AnalysisJobCreated:
     upload_dir = create_analysis_upload_dir(uuid4().hex)
     try:
+        # Async jobs persist uploads until the background worker finishes; the
+        # manager owns cleanup after this point.
         ensure_cv_quota(cv_files)
         job_upload = await save_upload(job_file, upload_dir, "job")
         cv_uploads = [await save_upload(file, upload_dir, "cv") for file in cv_files]
@@ -117,7 +123,12 @@ def get_ranking_job(analysis_id: str) -> AnalysisJobStatus:
 
 @router.delete("/jobs/{analysis_id}", response_model=AnalysisJobStatus)
 def cancel_ranking_job(analysis_id: str) -> AnalysisJobStatus:
+    # Cancellation exposes best-effort control to the UI; a running model call
+    # may still finish before the worker sees the cancel flag.
     status = analysis_job_manager.cancel(analysis_id)
     if not status:
         raise HTTPException(status_code=404, detail="Analyse introuvable.")
     return status
+
+# Role dans le projet:
+# Ce fichier expose les endpoints de classement synchrones et asynchrones. Il applique securite, quotas d'upload et delegation au BatchRankingPipeline.

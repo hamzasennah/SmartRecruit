@@ -4,10 +4,16 @@ from app.services.normalization.skill_normalizer import normalize_skill_list
 
 PARTIAL_SKILL_MATCH_WEIGHTS: dict[str, dict[str, float]] = {}
 MANDATORY_SCORE_WEIGHT = 1.0
+# Preferred skills are modeled as a capped bonus so they cannot compensate
+# fully for missing mandatory skills. The fixed 10% bonus may still be too
+# rigid for job families where optional tooling is more or less decisive.
 PREFERRED_BONUS_WEIGHT = 0.10
 
 
 def match_skills(cv: StructuredCV, job: StructuredJobDescription) -> dict:
+    # Matching is intentionally explicit: skills are normalized and compared as
+    # keywords. This is explainable, but it can miss semantically equivalent
+    # wording that is absent from the alias lists.
     candidate = set(
         normalize_skill_list(
             cv.skills.technical
@@ -20,6 +26,8 @@ def match_skills(cv: StructuredCV, job: StructuredJobDescription) -> dict:
     mandatory = normalize_skill_list(job.required_skills.mandatory)
     preferred = normalize_skill_list(job.required_skills.preferred)
     if not mandatory and not preferred:
+        # A 0.0 score here means "not applicable", not "candidate is weak".
+        # The scoring engine removes non-applicable categories before weighting.
         return {"applicable": False, "score": 0.0, "matched": [], "missing": [], "details": {}}
     matched_mandatory = sorted(set(mandatory).intersection(candidate))
     matched_preferred = sorted(set(preferred).intersection(candidate))
@@ -70,6 +78,9 @@ def _partial_skill_matches(required: list[str], candidate: set[str], exact_match
     for skill in required:
         if skill in exact:
             continue
+        # Partial matches are controlled by an explicit relation table. The
+        # current empty default avoids hidden assumptions, but it also means
+        # near-miss skills get no credit until the table is curated.
         related = PARTIAL_SKILL_MATCH_WEIGHTS.get(skill, {})
         found = [
             (candidate_skill, credit_ratio)
@@ -102,6 +113,8 @@ def match_soft_skills(cv: StructuredCV, job: StructuredJobDescription) -> dict:
     matched = sorted(set(required).intersection(candidate))
     missing = [skill for skill in required if skill not in matched]
     return {
+        # Soft skills are returned for audit/display but marked non-applicable
+        # so subjective wording does not silently penalize the ranking.
         "applicable": False,
         "score": round((len(matched) / len(required)) * 100, 2),
         "matched": matched,
@@ -110,3 +123,6 @@ def match_soft_skills(cv: StructuredCV, job: StructuredJobDescription) -> dict:
             "reason": "Les soft skills sont informatifs et ne sont pas utilises comme penalite de classement.",
         },
     }
+
+# Role dans le projet:
+# Ce fichier matche competences techniques et soft skills. Il alimente la categorie la plus importante du scoring global.

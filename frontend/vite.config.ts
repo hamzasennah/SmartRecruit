@@ -15,3 +15,6 @@ export default defineConfig({
     },
   },
 });
+
+// Role dans le projet:
+// Ce fichier configure Vite pour le frontend React. Il declare le plugin React et les options de serveur/build utilisees par npm.

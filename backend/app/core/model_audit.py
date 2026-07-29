@@ -72,6 +72,8 @@ def record_model_call(
     error_message: str | None = None,
     input_summary: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    # Audit events are intentionally metadata-only: they identify the model,
+    # endpoint, attempts, and context without storing full prompts or CV content.
     event: dict[str, object] = {
         "audit_call_id": uuid4().hex,
         "analysis_id": get_analysis_id(),
@@ -123,5 +125,10 @@ def _write_audit_event(event: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(event, ensure_ascii=False, sort_keys=True)
     with _audit_lock:
+        # A process-level lock prevents interleaved JSONL writes when concurrent
+        # analysis jobs call the model at the same time.
         with path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
+
+# Role dans le projet:
+# Ce fichier audite les appels modele. Les clients NVIDIA l'appellent pour relier latence, endpoint, modele et contexte d'analyse.

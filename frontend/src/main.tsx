@@ -8,3 +8,6 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <App />
   </React.StrictMode>,
 );
+
+// Role dans le projet:
+// Ce fichier monte l'application React dans le DOM. Il relie index.html au composant App qui porte l'interface utilisateur.

@@ -37,3 +37,6 @@ def test_report_masks_raw_text_by_default(tmp_path) -> None:
     html = output.read_text(encoding="utf-8")
     assert "Texte brut masque par defaut" in html
     assert "<pre>Sensitive candidate text</pre>" not in html
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour reports privacy. Il protege le comportement existant pendant les refactors sans appeler les services externes.

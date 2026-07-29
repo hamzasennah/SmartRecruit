@@ -51,3 +51,6 @@ def test_ranking_engine_uses_stable_tie_breaker() -> None:
     )
 
     assert [item.candidate.candidate_name for item in ranking] == ["Alpha", "Beta"]
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour ranking. Il protege le comportement existant pendant les refactors sans appeler les services externes.

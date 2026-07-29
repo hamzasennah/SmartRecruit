@@ -10,6 +10,8 @@ from app.services.experience.relevance_calculator import calculate_experience_re
 def match_experience(cv: StructuredCV, job: StructuredJobDescription) -> dict:
     required = job.experience_requirements.minimum_months
     if required <= 0:
+        # "applicable=False" protects candidates from a zero score when the job
+        # description did not provide a duration requirement.
         return {
             "applicable": False,
             "score": 0.0,
@@ -29,6 +31,9 @@ def match_experience(cv: StructuredCV, job: StructuredJobDescription) -> dict:
         if period:
             parsed = (parse_period_value(period.start_date), parse_period_value(period.end_date))
             periods.append(parsed)
+            # The relevance threshold turns a continuous heuristic into a
+            # binary "counts toward required months" decision. It is simple,
+            # but has not been calibrated against a diverse CV corpus.
             if relevance_score >= 0.45:
                 relevant.append(parsed)
         elif experience.duration_months:
@@ -37,6 +42,8 @@ def match_experience(cv: StructuredCV, job: StructuredJobDescription) -> dict:
                 explicit_relevant += experience.duration_months
     total_months = calculate_total_unique_months(periods) + explicit_total
     relevant_months = calculate_total_unique_months(relevant) + explicit_relevant
+    # Overlapping periods are counted once to avoid double-counting concurrent
+    # roles, while explicit durations without dates remain additive.
     score = round(min(relevant_months / required, 1.0) * 100, 2)
     return {
         "applicable": True,
@@ -49,3 +56,6 @@ def match_experience(cv: StructuredCV, job: StructuredJobDescription) -> dict:
             "required_experience_months": required,
         },
     }
+
+# Role dans le projet:
+# Ce fichier matche la duree d'experience pertinente. Il combine durees calculees, chevauchements et pertinence heuristique.

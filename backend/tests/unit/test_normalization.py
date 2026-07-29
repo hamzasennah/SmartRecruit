@@ -20,3 +20,6 @@ def test_language_alias_and_rank() -> None:
 def test_dedupe_by_normalized_key_preserves_original_value() -> None:
     assert dedupe_by_normalized_key(["Power BI", "power-bi", "SQL"]) == ["Power BI", "SQL"]
 
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour normalization. Il protege le comportement existant pendant les refactors sans appeler les services externes.

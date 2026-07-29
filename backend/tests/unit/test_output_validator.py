@@ -22,3 +22,6 @@ def test_parse_json_payload_extracts_balanced_json_from_llm_text() -> None:
 def test_parse_json_payload_rejects_invalid_response() -> None:
     with pytest.raises(OutputValidationError):
         parse_json_payload("Je ne peux pas fournir ce JSON.")
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour output validator. Il protege le comportement existant pendant les refactors sans appeler les services externes.

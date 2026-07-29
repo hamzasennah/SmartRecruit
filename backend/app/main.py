@@ -16,6 +16,8 @@ configure_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Startup validation fails fast for missing secrets or invalid runtime
+    # choices such as an unsupported vector backend.
     validate_startup_settings(settings)
     yield
 
@@ -46,6 +48,8 @@ app.include_router(ranking.router, prefix=settings.api_prefix)
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     incoming = request.headers.get("X-Request-ID")
+    # Request IDs are stored in context variables so logs and model-audit events
+    # can be correlated across nested service calls.
     request_id = incoming.strip() if incoming else uuid4().hex
     token = request_id_context.set(request_id)
     try:
@@ -64,3 +68,6 @@ def root() -> dict[str, str]:
         "docs": "/docs",
     }
 
+
+# Role dans le projet:
+# Ce fichier cree l'application FastAPI. Il valide la configuration, branche les middlewares et expose les routeurs API.

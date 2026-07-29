@@ -42,3 +42,6 @@ def test_explanations_use_proven_skill_details_without_inventing() -> None:
     assert "Responsabilites partiellement prouvees: Piloter le workstream BI/Data." in strengths
     assert "Competences obligatoires manquantes: power bi, snowflake." in weaknesses
     assert "Competences souhaitees manquantes: spm." not in weaknesses
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour explanation builder. Il protege le comportement existant pendant les refactors sans appeler les services externes.

@@ -1,151 +1,87 @@
 # SmartRecruit
 
-Application FastAPI + React pour analyser une fiche de poste et classer des CV avec une approche RAG explicable.
+SmartRecruit est une application FastAPI + React qui analyse une fiche de poste et classe des CV avec un scoring explicable. Elle s'adresse a un contexte RH ou projet academique qui veut comparer des candidats sur des criteres visibles: competences, experience, responsabilites, formation, langues, certifications et preuves textuelles.
 
-Le projet contient un backend FastAPI et un frontend React/Vite.
+Le README sert de point d'entree. Les explications exhaustives sont dans [docs/](docs/README.md), et le code contient des commentaires sur les limites connues du scoring.
 
-## Idee du projet
+## Objectif
 
-SmartRecruit recoit une fiche de poste et un nombre libre de CV. La fiche de poste sert de reference d'evaluation, tandis que les CV sont les documents a analyser et a classer.
+Le projet lit une fiche de poste et plusieurs CV, extrait leur texte, structure les informations avec un LLM NVIDIA, indexe des passages de CV avec des embeddings NVIDIA, retrouve des preuves pertinentes, puis calcule un classement final detaille.
 
-Le backend ne donne pas un score directement a partir du nom du fichier ou d'une base de resultats deja calculee. A chaque analyse, il relit les documents, extrait leur texte, structure les informations avec le LLM NVIDIA, vectorise les passages des CV avec le modele d'embedding NVIDIA, recherche les preuves pertinentes dans PostgreSQL, puis calcule un score explicable.
+Le but n'est pas de remplacer un recruteur: le score aide a trier et auditer, mais il reste dependant de la qualite des documents, des extractions et des regles de matching.
 
-## Fonctionnement
+## Fonctionnalites
 
-- extraction de texte depuis PDF, DOCX, TXT et MD ;
-- structuration de la fiche de poste et des CV par un modele NVIDIA appele via API ;
-- normalisation des competences, diplomes, langues et intitules ;
-- application de regles metier versionnees dans `backend/app/data/domain_rules.json` ;
-- decoupage des sections de CV en chunks ;
-- transformation des chunks en embeddings NVIDIA ;
-- stockage des chunks vectorises dans PostgreSQL/pgvector avec SQLAlchemy ;
-- historisation structuree des CV, fiches de poste et analyses dans PostgreSQL ;
-- recherche semantique des preuves les plus proches de la fiche de poste ;
-- scoring explicable par categories avec redistribution des poids sur les criteres presents ;
-- classement final avec rang, score, forces, faiblesses et preuves.
+- Upload d'une fiche de poste et de plusieurs CV.
+- Formats acceptes: PDF, DOCX, TXT, MD.
+- Extraction structuree des jobs et CV avec NVIDIA API.
+- Normalisation des competences, titres, langues, formations et dates.
+- Recherche de preuves par embeddings et similarite vectorielle.
+- Scoring par categories avec forces, faiblesses, manquants et preuves.
+- Interface React avec suivi d'analyse asynchrone.
+- Audit JSONL des appels modele, sans stocker le texte complet des CV.
 
-## Architecture logique
+## Stack Et Architecture
 
-```mermaid
-flowchart TD
-    A["PDF fiche de poste"] --> B["Extraction du texte brut"]
-    C["PDF CV candidats"] --> D["Extraction du texte brut"]
+- Backend: FastAPI, Pydantic, SQLAlchemy, Alembic, httpx.
+- Frontend: React, TypeScript, Vite, lucide-react.
+- Documents: PyMuPDF pour PDF, python-docx pour DOCX.
+- IA: `meta/llama-3.1-8b-instruct` pour l'extraction JSON, `nvidia/llama-nemotron-embed-1b-v2` pour les embeddings.
+- Donnees: PostgreSQL pour CV/jobs/analyses/chunks.
+- Vectoriel: configuration actuelle verifiee en local avec `VECTOR_BACKEND=json`; le mode `pgvector` existe dans le code mais demande l'extension PostgreSQL `vector`.
 
-    B --> E["LLM NVIDIA"]
-    D --> F["LLM NVIDIA"]
-
-    E --> G["JSON fiche de poste structuree<br/>competences, responsabilites, langues..."]
-    F --> H["JSON CV structure<br/>nom, experiences, formation, skills..."]
-
-    D --> I["Segmentation du texte CV<br/>sections: experience, skills, projets..."]
-    I --> J["Decoupage en chunks"]
-    J --> K["Modele embedding NVIDIA"]
-    K --> L["Vecteurs des chunks CV"]
-    L --> M["PostgreSQL<br/>table vector_chunks"]
-    G --> DB1["PostgreSQL<br/>table jobs"]
-    H --> DB2["PostgreSQL<br/>table resumes"]
-
-    G --> N["Construction de la requete semantique<br/>criteres du poste"]
-    N --> O["Modele embedding NVIDIA"]
-    O --> P["Vecteur de requete"]
-
-    P --> Q["Recherche semantique<br/>similarite cosinus"]
-    M --> Q
-
-    Q --> R["Passages pertinents / preuves RAG"]
-
-    G --> S["Matching et scoring"]
-    H --> S
-    R --> S
-
-    S --> T["Classement final<br/>scores, forces, faiblesses, preuves"]
-    T --> DB3["PostgreSQL<br/>table analyses"]
-    T --> U["Frontend React<br/>progression et resultats detailles"]
-```
-
-Le schema montre que le backend suit deux chemins complementaires apres l'extraction du texte. D'un cote, le texte brut de la fiche de poste et des CV est envoye au LLM NVIDIA pour etre transforme en JSON structure. De l'autre cote, le texte brut des CV est segmente puis decoupe en chunks, qui sont envoyes au modele d'embedding NVIDIA pour etre transformes en vecteurs et stockes temporairement dans PostgreSQL. Ensuite, les criteres extraits de la fiche de poste sont aussi vectorises afin de rechercher les passages de CV les plus proches semantiquement. Le scoring utilise enfin le JSON structure et les preuves RAG pour produire le classement final.
-
-Important : les vecteurs sont isoles par un `namespace` propre a chaque analyse, puis supprimes a la fin du traitement. Cela evite de melanger les tests et garantit qu'un nouveau lancement relit les documents fournis.
-
-## Arborescence utile
+Flux resume:
 
 ```text
-backend/
-  app/
-    api/routes/              Endpoints FastAPI
-    config.py                Configuration .env
-    data/domain_rules.json   Regles metier versionnees pour extraction et matching
-    database/                Base SQLAlchemy: resumes, jobs, analyses, vector_chunks
-    infrastructure/          Clients NVIDIA API et stockage vectoriel PostgreSQL/pgvector
-    schemas/                 Modeles Pydantic
-    services/
-      documents/             Lecture PDF/DOCX/TXT/MD et segmentation
-      extraction/            Prompts stricts et validation JSON
-      normalization/         Normalisation des valeurs extraites
-      experience/            Calcul de duree et pertinence experience
-      retrieval/             Chunking, embeddings, recherche semantique
-      matching/              Matching par categorie
-      scoring/               Score final et explications
-      orchestration/         Pipeline complet fiche + CV + ranking
-  scripts/
-    free_port.py             Liberation controlee d'un port local
-    initialize_databases.py  Application des migrations Alembic
-    render_result_report.py  Generateur de rapport HTML
-    run_backend.sh           Lancement FastAPI
-
-frontend/
-  src/App.tsx                 Interface upload, progression et resultats
-  src/styles.css              Mise en page et design responsive
-  package.json                Scripts Vite
+Documents -> parsing -> extraction LLM -> normalisation
+          -> chunking + embeddings -> PostgreSQL -> retrieval
+          -> matchers par categorie -> score final -> frontend
 ```
 
-## Prerequis
+## Prerequis Verifies
 
-- Python 3.11 ou plus ;
-- Node.js 18 ou plus pour le frontend ;
-- PostgreSQL avec pgvector accessible localement ou via Docker Compose ;
-- cle API NVIDIA ;
-- modele LLM : `meta/llama-3.1-8b-instruct` ;
-- modele embeddings : `nvidia/llama-nemotron-embed-1b-v2`.
+Environnement local utilise pour verifier cette documentation:
+
+- Python `3.13.13`
+- Node.js `24.18.0`
+- npm `11.16.0`
+- Docker CLI `29.6.1`
+- PostgreSQL local present sur le port `5432`
+
+La configuration Python cible `py311` dans `pyproject.toml`; utilisez donc Python 3.11 ou plus.
+
+## Installation
+
+Backend:
+
+```powershell
+cd backend
+python -m pip install -r requirements-dev.txt
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm install
+```
+
+Note: `npm ci` nettoie `node_modules`. Dans l'environnement verifie, cette commande a echoue car un serveur Vite existant verrouillait `esbuild.exe`; `npm install` a ete teste avec succes.
 
 ## Configuration
 
-Ne jamais versionner les vraies cles. Elles doivent rester dans `backend/.env` et, pour Vite, dans `frontend/.env.local`.
+Backend:
 
-Exemple `.env` :
+- Creer `backend/.env` a partir de [backend/.env.example](backend/.env.example).
+- Renseigner une vraie valeur `NVIDIA_API_KEY`.
+- Renseigner `SMARTRECRUIT_API_KEY`; le frontend doit envoyer la meme valeur.
+- Conserver `VECTOR_BACKEND=json` pour le mode local actuellement verifie.
+- Renseigner `DATABASE_URL` vers une base PostgreSQL existante.
 
-```env
-NVIDIA_API_KEY=your_nvidia_api_key_here
-NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_LLM_MODEL=meta/llama-3.1-8b-instruct
-NVIDIA_EMBEDDING_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_EMBEDDING_MODEL=nvidia/llama-nemotron-embed-1b-v2
-NVIDIA_TIMEOUT=120
-NVIDIA_MAX_RETRIES=2
-NVIDIA_RETRY_DELAY=2
-NVIDIA_MAX_TOKENS=8192
-NVIDIA_TEMPERATURE=0.1
-NVIDIA_SEED=0
-NVIDIA_EMBEDDING_DIMENSIONS=
-DATABASE_URL=postgresql+psycopg://smartrecruit:change_me@localhost:5432/smartrecruit
-MAX_UPLOAD_MB=20
-MAX_UPLOAD_BYTES=
-MAX_TOTAL_UPLOAD_MB=100
-MAX_TOTAL_UPLOAD_BYTES=
-MAX_CV_FILES=20
-UPLOAD_CHUNK_BYTES=1048576
-SMARTRECRUIT_API_KEY=change_me_for_local_development
-RATE_LIMIT_REQUESTS=20
-RATE_LIMIT_WINDOW_SECONDS=60
-JOB_WORKER_COUNT=2
-EMBEDDING_BATCH_SIZE=32
-LLM_INPUT_CHAR_LIMIT=12000
-VECTOR_BACKEND=pgvector
-MODEL_AUDIT_LOG_PATH=storage/model_audit.jsonl
-SMARTRECRUIT_RUN_INTEGRATION=0
-```
+Frontend:
 
-Le frontend doit envoyer la meme cle API au backend :
+- Creer `frontend/.env.local`.
+- Renseigner au minimum:
 
 ```env
 VITE_API_URL=
@@ -155,99 +91,101 @@ VITE_MAX_TOTAL_UPLOAD_MB=100
 VITE_MAX_CV_FILES=20
 ```
 
-Le backend exige `SMARTRECRUIT_API_KEY` sur les routes d'analyse et de document. Les clients doivent envoyer `X-API-Key: <cle>` ou `Authorization: Bearer <cle>`. Si NVIDIA API ou PostgreSQL ne repond pas, l'analyse retourne une erreur generique cote client et garde les details dans les logs serveur.
+`VITE_API_URL=` vide fonctionne avec le frontend servi sur le meme domaine logique pendant le developpement. Pour un backend separe, utilisez par exemple `VITE_API_URL=http://127.0.0.1:8002`.
 
-## Lancement
+## Base De Donnees
 
-Terminal 1 - PostgreSQL avec Docker Compose, si vous utilisez Docker :
+La configuration locale actuelle est:
 
-```bash
-cd ~/SmartRecruit/backend
-docker compose down
-docker compose up -d
-python scripts/initialize_databases.py
+```env
+VECTOR_BACKEND=json
 ```
 
-Le compose utilise l'image `pgvector/pgvector:pg16`, lie le port a `127.0.0.1` et lit les identifiants depuis les variables `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` et `POSTGRES_PORT`. Changez au minimum `POSTGRES_PASSWORD` hors developpement local.
+Dans ce mode, les vecteurs sont stockes en JSON dans PostgreSQL et la similarite cosinus est calculee en Python. Cela evite de dependre de l'extension `vector`, mais reste moins adapte a de gros volumes qu'un index pgvector.
 
-Si PostgreSQL est installe directement sur la machine, il faut que la base indiquee dans `DATABASE_URL` existe, que l'extension `vector` soit disponible, puis lancer les migrations avec `python scripts/initialize_databases.py`.
+Le mode `pgvector` existe dans `backend/app/infrastructure/postgres_vector_store.py` et `backend/docker-compose.yml`, mais il n'a pas ete valide dans l'environnement actuel: Docker Desktop n'etait pas demarre, et le PostgreSQL local ne disposait pas de l'extension `vector`.
 
-Terminal 2 - Backend FastAPI :
+## Demarrage
 
-```bash
-cd ~/SmartRecruit/backend
-python scripts/free_port.py 8002 --yes --allowed-name python --allowed-name uvicorn
+Terminal backend:
 
-python -m uvicorn app.main:app \
-  --host 127.0.0.1 \
-  --port 8002
+```powershell
+cd backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8002
 ```
 
-API : `http://127.0.0.1:8002`
-Swagger : `http://127.0.0.1:8002/docs`
+Verification rapide:
 
-Terminal 3 - Frontend React :
+```text
+http://127.0.0.1:8002/api/health
+```
 
-```bash
-cd ~/SmartRecruit/frontend
-npm install
+Terminal frontend:
+
+```powershell
+cd frontend
 npm run dev
 ```
 
-Interface : `http://127.0.0.1:5173`
-
-## Endpoints principaux
-
-`POST /api/ranking/analyze`
-
-Form-data :
-
-- `job_file` : fiche de poste ;
-- `cv_files` : un ou plusieurs CV ;
-- `top_k` : nombre de preuves semantiques recuperees par candidat.
-
-Cette route reste disponible pour compatibilite, mais l'interface utilise le mode asynchrone :
-
-- `POST /api/ranking/jobs` : cree une analyse et retourne `analysis_id` ;
-- `GET /api/ranking/jobs/{analysis_id}` : suit l'etat, la progression et le resultat ;
-- `DELETE /api/ranking/jobs/{analysis_id}` : demande l'annulation de l'analyse.
-
-Les uploads sont lus par chunks, limites par fichier, par nombre de CV et par taille cumulee, stockes sous noms aleatoires dans un dossier temporaire par analyse, puis supprimes en fin de traitement.
+Ouvrir l'URL affichee par Vite. Le port normal est `http://127.0.0.1:5173`; dans l'environnement verifie, ce port etait deja occupe et Vite a demarre sur `http://127.0.0.1:5174`.
 
 ## Tests
 
-Backend :
+Backend:
 
-```bash
-cd ~/SmartRecruit/backend
-python -m compileall app scripts tests alembic
-ruff check .
-mypy app
-coverage run -m pytest tests/unit tests/test_health.py
-coverage report
+```powershell
+cd backend
+python -m ruff check app tests scripts
+python -m pytest tests -q
 ```
 
-Frontend :
+Frontend:
 
-```bash
-cd ~/SmartRecruit/frontend
+```powershell
+cd frontend
 npm run lint
-npm run test
+npm test -- --run
 npm run build
-npm audit
 ```
 
-Tests d'integration avec NVIDIA API et PostgreSQL/pgvector actifs :
+Les tests d'integration NVIDIA/PostgreSQL existent dans `backend/tests/integration/`, mais restent ignores par defaut via configuration d'environnement.
 
-```bash
-cd ~/SmartRecruit/backend
-export SMARTRECRUIT_RUN_INTEGRATION=1
-pytest tests/integration
+## Structure Du Projet
+
+```text
+backend/
+  app/
+    api/routes/          Routes FastAPI
+    core/                Configuration transverse, securite, logs, audit
+    data/                Regles et alias JSON
+    database/            Modeles et sessions SQLAlchemy
+    infrastructure/      Clients NVIDIA et stockage vectoriel
+    schemas/             Contrats Pydantic
+    services/            Parsing, extraction, normalisation, RAG, scoring
+  tests/                 Tests unitaires et integration optionnelle
+
+frontend/
+  src/                   Application React et validation client
+
+docs/
+  README.md              Index de documentation
+  SmartRecruit_Documentation_Complete.tex
+  LATEX_COMPILATION_GUIDE.md
+  code_comments_report.md
 ```
 
-## Confidentialite et dependances
+## Limitations Connues
 
-- Les fichiers envoyes ne sont pas conserves apres l'analyse.
-- Les logs doivent rester sans texte de CV ni contenu de fiche de poste ; ils utilisent des identifiants de correlation (`X-Request-ID`, `analysis_id`).
-- Les dependances Python de production sont dans `backend/requirements.txt` et les dependances de developpement dans `backend/requirements-dev.txt`.
-- PyMuPDF est utilise pour l'extraction PDF ; verifier sa licence et ses conditions de distribution avant tout usage commercial ou redistribution.
+- Le vocabulaire de reference peut etre desequilibre entre familles de metier; ce biais doit etre mesure avec un jeu de CV varie.
+- Plusieurs matchers utilisent des intersections de mots-cles et des alias; ils ne comprennent pas toutes les formulations semantiquement equivalentes.
+- La similarite par tokens de type Jaccard peut penaliser des textes longs mais pertinents.
+- Certains scores `0.0` representent une absence de signal ou une categorie non applicable, pas toujours une faiblesse reelle du candidat.
+- Les poids de scoring sont fixes et globaux; ils ne s'adaptent pas encore au type de poste.
+- Le mode local `VECTOR_BACKEND=json` est pratique pour developper, mais moins performant que `pgvector` pour de gros volumes.
+
+## Documentation Complementaire
+
+- [Index docs](docs/README.md)
+- [Documentation technique complete LaTeX](docs/SmartRecruit_Documentation_Complete.tex)
+- [Guide de compilation LaTeX](docs/LATEX_COMPILATION_GUIDE.md)
+- [Rapport des commentaires de code](docs/code_comments_report.md)

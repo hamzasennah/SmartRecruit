@@ -21,6 +21,8 @@ class InMemoryRateLimiter:
         window_start = now - window_seconds
         with self._lock:
             events = self._events[key]
+            # Sliding-window cleanup keeps memory bounded per active identity
+            # without needing an external cache for local deployments.
             while events and events[0] < window_start:
                 events.popleft()
             if len(events) >= limit:
@@ -44,11 +46,14 @@ def require_api_key(
 ) -> None:
     expected = settings.smartrecruit_api_key
     if not expected:
+        # Protected routes fail closed when the deployment forgets to configure
+        # an API key.
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentification API non configuree.",
         )
     supplied = _extract_api_key(authorization, x_api_key)
+    # Constant-time comparison avoids leaking API-key equality through timing.
     if not supplied or not hmac.compare_digest(supplied, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -64,6 +69,7 @@ def check_rate_limit(
 ) -> None:
     supplied = _extract_api_key(authorization, x_api_key)
     identity = supplied or (request.client.host if request.client else "unknown")
+    # The limiter hashes identities so logs/state do not retain raw API keys.
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
     rate_limiter.check(
         digest,
@@ -80,3 +86,6 @@ def _extract_api_key(authorization: str | None, x_api_key: str | None) -> str | 
         if scheme.lower() == "bearer" and token.strip():
             return token.strip()
     return None
+
+# Role dans le projet:
+# Ce fichier protege les routes sensibles. Il gere cle API et rate limit local avant que les analyses couteuses soient lancees.

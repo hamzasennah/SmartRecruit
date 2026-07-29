@@ -131,3 +131,6 @@ def test_section_indexer_batches_embeddings(monkeypatch) -> None:
     assert len(chunks) > 2
     assert all(len(call) <= 2 for call in embeddings.calls)
     assert store.upserts == len(embeddings.calls)
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour jobs and retrieval. Il protege le comportement existant pendant les refactors sans appeler les services externes.

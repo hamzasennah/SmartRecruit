@@ -39,3 +39,6 @@ def normalize_language_level(value: str | None) -> str | None:
 def language_rank(value: str | None) -> int:
     return language_levels().get(normalize_language_level(value) or "", 0)
 
+
+# Role dans le projet:
+# Ce fichier normalise langues et niveaux. Les extracteurs et le matcher langues l'utilisent pour comparer CV et exigences.

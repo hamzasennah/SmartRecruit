@@ -34,3 +34,6 @@ class StructuredJobDescription(BaseModel):
     raw_text_preview: str = ""
     extraction_confidence: float = 0.0
 
+
+# Role dans le projet:
+# Ce fichier definit la fiche de poste structuree. JobExtractor la produit et tous les matchers y lisent les criteres de recrutement.

@@ -8,7 +8,11 @@ def match_education(cv: StructuredCV, job: StructuredJobDescription) -> dict:
     required = job.education_requirements.minimum_level
     accepted_fields = [normalize_text(field) for field in job.education_requirements.accepted_fields if normalize_text(field)]
     if not required and not accepted_fields:
+        # Non-applicable means the job did not state education constraints; the
+        # 0.0 score is a placeholder that the scoring engine excludes.
         return {"applicable": False, "score": 0.0, "matched": [], "missing": [], "details": {}}
+    # Education levels are reduced to an ordinal rank. This keeps comparisons
+    # stable, but loses nuance between degrees that share the same rank.
     candidate_rank = max(
         (education_rank(education.normalized_level or education.degree) for education in cv.education),
         default=0,
@@ -57,6 +61,11 @@ def _matched_fields(cv: StructuredCV, accepted_fields: list[str]) -> list[str]:
     for education in cv.education:
         text = normalize_text(" ".join([education.field or "", education.degree or ""]))
         for field in accepted_fields:
+            # Field matching is substring-based and explainable, but it is not
+            # semantic: related fields can be missed if their wording differs.
             if field and field in text and field not in matched:
                 matched.append(field)
     return matched
+
+# Role dans le projet:
+# Ce fichier matche niveaux et domaines de formation. Il transforme les criteres education en score explicable.

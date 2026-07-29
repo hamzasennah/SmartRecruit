@@ -24,3 +24,6 @@ def test_skill_matching_does_not_count_azure_ad_as_azure_platform_evidence() -> 
     assert "azure (partiel: azure ad)" not in result["matched"]
     assert result["score"] == 0.0
 
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour matching. Il protege le comportement existant pendant les refactors sans appeler les services externes.

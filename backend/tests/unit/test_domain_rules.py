@@ -46,3 +46,6 @@ def test_declared_candidate_roles_have_non_data_skill_coverage() -> None:
     for expected_skills in role_coverage.values():
         assert expected_skills.issubset(cv_hints)
         assert expected_skills.issubset(job_hints)
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour domain rules. Il protege le comportement existant pendant les refactors sans appeler les services externes.

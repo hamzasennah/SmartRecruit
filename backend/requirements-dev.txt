@@ -6,3 +6,6 @@ mypy>=1.11
 pip-tools>=7.4
 pytest>=8.2
 ruff>=0.8
+
+# Role dans le projet:
+# Ce fichier ajoute les outils de developpement et de test au-dessus du runtime. Il reste separe pour alleger les installations de production.

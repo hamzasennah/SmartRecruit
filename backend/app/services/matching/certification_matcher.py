@@ -7,6 +7,8 @@ def match_certifications_and_domains(cv: StructuredCV, job: StructuredJobDescrip
     required_certifications = _normalize_list(job.certifications)
     required_domains = _normalize_list(job.experience_requirements.required_domains)
     if not required_certifications and not required_domains:
+        # A zero score here means there were no certification/domain criteria to
+        # evaluate, not that the candidate lacks certifications.
         return {"applicable": False, "score": 0.0, "matched": [], "missing": [], "details": {}}
 
     candidate_certifications = _normalize_list(cv.certifications)
@@ -58,12 +60,16 @@ def _normalize_list(values: list[str]) -> list[str]:
 
 
 def _contains_value(values: list[str], expected: str) -> bool:
+    # Substring matching catches common variants such as a certification code
+    # inside a longer label, but it can also over-match short domain words.
     return any(expected == value or expected in value or value in expected for value in values)
 
 
 def _candidate_domain_text(cv: StructuredCV) -> str:
     parts: list[str] = []
     for experience in cv.experiences:
+        # Domain evidence is gathered from structured fields only; if extraction
+        # misses company/mission context, this matcher has no semantic fallback.
         parts.extend(
             [
                 experience.job_title or "",
@@ -78,3 +84,6 @@ def _candidate_domain_text(cv: StructuredCV) -> str:
         parts.extend([project.name or "", project.description or "", " ".join(project.skills_used)])
     return normalize_text(" ".join(parts))
 
+
+# Role dans le projet:
+# Ce fichier matche certifications et domaines. ScoringEngine l'appelle comme categorie specialisee dans le score final.

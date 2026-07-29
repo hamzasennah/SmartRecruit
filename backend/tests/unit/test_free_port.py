@@ -19,3 +19,6 @@ def test_free_port_skips_unallowed_process(monkeypatch, capsys) -> None:
 
     output = capsys.readouterr().out
     assert "Processus non autorise" in output
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour free port. Il protege le comportement existant pendant les refactors sans appeler les services externes.

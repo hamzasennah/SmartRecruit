@@ -41,3 +41,6 @@ export function hasSupportedExtension(filename: string): boolean {
   const lower = filename.toLowerCase();
   return SUPPORTED_EXTENSIONS.some((extension) => lower.endsWith(extension));
 }
+
+// Role dans le projet:
+// Ce fichier valide localement la selection de fichiers. Il duplique les limites utilisateur visibles avant que le backend applique ses propres garde-fous.

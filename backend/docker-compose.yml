@@ -12,3 +12,6 @@ services:
 
 volumes:
   postgres_data:
+
+# Role dans le projet:
+# Ce fichier decrit le service PostgreSQL local avec pgvector. Il soutient les tests et demonstrations qui utilisent le backend vectoriel SQL.

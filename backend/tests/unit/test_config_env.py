@@ -131,3 +131,6 @@ def _set_valid_startup_env(monkeypatch) -> None:
     monkeypatch.setenv("EMBEDDING_BATCH_SIZE", "32")
     monkeypatch.setenv("LLM_INPUT_CHAR_LIMIT", "12000")
     monkeypatch.setenv("VECTOR_BACKEND", "json")
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour config env. Il protege le comportement existant pendant les refactors sans appeler les services externes.

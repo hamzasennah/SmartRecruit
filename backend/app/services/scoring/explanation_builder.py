@@ -88,3 +88,6 @@ def _partial_skill_labels(values: list[dict]) -> list[str]:
             labels.append(skill)
     return labels
 
+
+# Role dans le projet:
+# Ce fichier transforme les scores par categorie en forces/faiblesses. Le moteur de scoring l'utilise pour rendre le classement explicable.

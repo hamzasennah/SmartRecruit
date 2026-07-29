@@ -93,6 +93,8 @@ const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const API_LABEL = "API connectee";
 const API_KEY = import.meta.env.VITE_SMARTRECRUIT_API_KEY || "";
 const ACCEPTED_EXTENSIONS = SUPPORTED_EXTENSIONS.join(",");
+// Evidence is deliberately previewed before expansion so recruiters see enough
+// context to trust the score without turning the ranking view into raw CV text.
 const EVIDENCE_PREVIEW_LIMIT = 3;
 const EVIDENCE_TEXT_LIMIT = 320;
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
@@ -141,6 +143,8 @@ const LANGUAGE_RANK_LABELS: Record<number, string> = {
 };
 
 const PIPELINE_STEPS: PipelineStep[] = [
+  // These progress targets mirror backend phases at a product level only; they
+  // are UI milestones, not exact timing measurements from the worker.
   {
     title: "Preparation",
     detail: "Validation des fichiers selectionnes",
@@ -218,6 +222,9 @@ function App() {
     }
 
     const formData = new FormData();
+    // The frontend sends original files and lets the backend own parsing,
+    // extraction, vector retrieval, and scoring so client code cannot affect
+    // ranking logic.
     formData.append("job_file", jobFile);
     cvFiles.forEach((file) => formData.append("cv_files", file));
     formData.append("top_k", "8");
@@ -260,6 +267,8 @@ function App() {
 
   async function pollAnalysis(id: string, signal: AbortSignal) {
     while (!signal.aborted) {
+      // Polling keeps long model/database work out of a single browser request;
+      // the in-memory backend job manager is the source of truth for status.
       const response = await fetch(`${API_URL}/api/ranking/jobs/${id}`, {
         headers: { "X-API-Key": API_KEY },
         signal,
@@ -551,6 +560,8 @@ function CriteriaList({ title, values }: { title: string; values: string[] }) {
 
 function CandidateCard({ item }: { item: RankedCandidate }) {
   const candidate = item.candidate;
+  // Keep only a compact evidence preview in the card; the remaining snippets
+  // stay available behind disclosure controls.
   const visibleEvidence = candidate.evidence.slice(0, EVIDENCE_PREVIEW_LIMIT);
   const hiddenEvidence = candidate.evidence.slice(EVIDENCE_PREVIEW_LIMIT);
   return (
@@ -606,6 +617,8 @@ function CandidateCard({ item }: { item: RankedCandidate }) {
 }
 
 function EvidenceItem({ evidence }: { evidence: Evidence }) {
+  // Client-side redaction mirrors backend redaction as a defense-in-depth layer
+  // for evidence copied from parsed CV text.
   const redacted = redactPersonalData(evidence.text);
   const preview = truncateText(redacted, EVIDENCE_TEXT_LIMIT);
   const hasMore = preview !== redacted;
@@ -626,6 +639,8 @@ function EvidenceItem({ evidence }: { evidence: Evidence }) {
 
 function CategoryBlock({ category }: { category: CategoryScore }) {
   const categoryTitle = formatCategoryName(category.name);
+  // Partial matches are shown separately because they are useful audit signals
+  // but should not look identical to exact keyword matches.
   const partialSkills =
     category.name === "technical_skills"
       ? [
@@ -911,6 +926,8 @@ function truncateText(value: string, limit: number) {
 }
 
 function redactPersonalData(value: string) {
+  // This redaction is heuristic display hygiene, not a guarantee that all PII
+  // has been removed from every possible document format.
   const withoutEmails = value.replace(EMAIL_PATTERN, "[email masque]");
   const withoutUrls = withoutEmails.replace(URL_PATTERN, "[url masquee]");
   return withoutUrls.replace(PHONE_PATTERN, (match, prefix: string, phone: string) => {
@@ -939,3 +956,6 @@ function sleep(ms: number) {
 }
 
 export default App;
+
+// Role dans le projet:
+// Ce fichier porte l'experience frontend principale. Il appelle les routes ranking, suit les jobs asynchrones, et presente scores, preuves et details d'audit.

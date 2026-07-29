@@ -763,3 +763,8 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/*
+Role dans le projet:
+Ce fichier definit la presentation visuelle de l'application. Il transforme les etats et donnees React en interface lisible pour l'analyse de CV.
+*/

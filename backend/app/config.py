@@ -11,6 +11,7 @@ PROJECT_ROOT = BACKEND_ROOT.parent
 
 
 def load_backend_env(path: Path = BACKEND_ROOT / ".env") -> None:
+    # utf-8-sig accepts .env files saved by Windows editors with a BOM.
     load_dotenv(path, encoding="utf-8-sig")
 
 
@@ -83,6 +84,7 @@ class Settings:
     @property
     def embedding_dimensions(self) -> int | None:
         value = os.getenv("NVIDIA_EMBEDDING_DIMENSIONS", "").strip()
+        # Empty dimensions means "use the model-native vector size".
         return int(value) if value else None
 
     @property
@@ -141,6 +143,8 @@ class Settings:
 
     @property
     def vector_backend(self) -> str:
+        # pgvector is the default for production-style search, while json keeps
+        # local/test environments usable without the extension.
         return os.getenv("VECTOR_BACKEND", "pgvector").strip().lower()
 
     @property
@@ -149,3 +153,6 @@ class Settings:
 
 
 settings = Settings()
+
+# Role dans le projet:
+# Ce fichier centralise les parametres runtime lus depuis l'environnement. Les clients, routes et services l'utilisent pour eviter des constantes dispersees.

@@ -22,3 +22,6 @@ def test_batch_ranking_pipeline_with_text_files(tmp_path: Path) -> None:
 
     assert response.total_candidates == 2
     assert response.ranking[0].candidate.final_score >= response.ranking[1].candidate.final_score
+
+# Role dans le projet:
+# Ce fichier couvre le pipeline complet avec services externes. Il sert de validation bout-en-bout quand l'environnement d'integration est disponible.

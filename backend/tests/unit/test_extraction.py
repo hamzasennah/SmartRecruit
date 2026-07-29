@@ -817,3 +817,6 @@ def test_cv_extractor_recovers_candidate_name_from_visible_raw_text() -> None:
     cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
 
     assert cv.candidate_name == "SILLAHI Chaimaa"
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour extraction. Il protege le comportement existant pendant les refactors sans appeler les services externes.

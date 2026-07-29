@@ -62,6 +62,8 @@ class NvidiaLLMClient(NvidiaAPIClient):
             "max_tokens": self.max_tokens,
         }
         if self.seed is not None:
+            # Seed is forwarded when configured to reduce output variability,
+            # though remote LLM services can still be partly nondeterministic.
             payload["seed"] = self.seed
         last_error: Exception | None = None
         for parse_attempt in range(1, self.max_retries + 2):
@@ -84,10 +86,14 @@ class NvidiaLLMClient(NvidiaAPIClient):
                     preview,
                 )
                 if finish_reason == "length":
+                    # A truncated answer usually means JSON cannot be repaired
+                    # safely; callers need a larger token budget instead.
                     raise ExternalServiceError(
                         "La reponse NVIDIA LLM est tronquee. Augmentez NVIDIA_MAX_TOKENS dans .env."
                     ) from exc
                 if parse_attempt <= self.max_retries:
+                    # Parse retries reuse the same payload because the failure
+                    # is malformed JSON, not a changed extraction request.
                     time.sleep(self.retry_delay)
                     continue
                 break
@@ -125,3 +131,6 @@ def _finish_reason(response: dict[str, Any]) -> str | None:
         return response["choices"][0].get("finish_reason")
     except (KeyError, IndexError, TypeError):
         return None
+
+# Role dans le projet:
+# Ce fichier implemente le client LLM NVIDIA. Les extracteurs de job et CV l'utilisent pour produire du JSON structure valide.

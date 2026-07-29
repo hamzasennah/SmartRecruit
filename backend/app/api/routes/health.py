@@ -15,3 +15,6 @@ def health() -> dict:
         "nvidia_api_configured": bool(settings.nvidia_api_key),
         "database_enabled": bool(settings.database_url),
     }
+
+# Role dans le projet:
+# Ce fichier expose la route de sante. Il renseigne le frontend et les tests sur l'etat minimal de configuration du backend.

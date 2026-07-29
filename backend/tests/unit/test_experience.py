@@ -24,3 +24,6 @@ def test_french_abbreviated_month_range_duration() -> None:
 def test_overlap_periods_not_counted_twice() -> None:
     periods = [(date(2021, 1, 1), date(2022, 12, 1)), (date(2022, 6, 1), date(2023, 12, 1))]
     assert calculate_total_unique_months(periods) == 36
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour experience. Il protege le comportement existant pendant les refactors sans appeler les services externes.

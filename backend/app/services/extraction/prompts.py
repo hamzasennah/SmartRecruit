@@ -18,6 +18,9 @@ REGLES D'EXTRACTION:
 - Les missions et descriptions doivent etre courtes, factuelles, et limitees a 160 caracteres.
 """
 
+# The prompts ask the LLM for structured evidence only. The wording deliberately
+# forbids scoring and invention so deterministic matchers can own ranking logic,
+# but model compliance is still verified again in coercion/validation code.
 CV_EXTRACTION_PROMPT = (
     EXTRACTION_RULES
     + """
@@ -101,3 +104,6 @@ FICHE DE POSTE:
 {text}
 """
 )
+
+# Role dans le projet:
+# Ce fichier contient les prompts d'extraction. Il maintient les consignes LLM separees du code de validation et de scoring.

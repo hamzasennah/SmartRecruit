@@ -12,3 +12,6 @@ def get_request_id() -> str:
 
 def get_analysis_id() -> str:
     return analysis_id_context.get()
+
+# Role dans le projet:
+# Ce fichier stocke request_id et analysis_id en variables de contexte. Les logs et audits les recuperent sans passer ces identifiants partout en parametres.

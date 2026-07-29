@@ -52,6 +52,8 @@ class NvidiaEmbeddingClient(NvidiaAPIClient):
             "input_type": input_type,
         }
         if self.dimensions:
+            # Dimensions is optional so the service can return the model-native
+            # vector size unless the deployment explicitly requests projection.
             payload["dimensions"] = self.dimensions
         response = self._post("/embeddings", payload)
         try:
@@ -59,6 +61,8 @@ class NvidiaEmbeddingClient(NvidiaAPIClient):
         except (KeyError, TypeError) as exc:
             raise ExternalServiceError("La reponse embeddings NVIDIA n'est pas exploitable.") from exc
         if len(embeddings) != len(texts):
+            # Ordering matters because callers zip embeddings back to chunks; a
+            # count mismatch is safer to fail than silently misalign.
             raise ExternalServiceError("La reponse embeddings NVIDIA ne correspond pas au nombre de textes envoyes.")
         return embeddings
 
@@ -81,3 +85,6 @@ def get_embedding_client(settings: Settings) -> NvidiaEmbeddingClient:
         retry_delay=settings.llm_retry_delay,
         dimensions=settings.embedding_dimensions,
     )
+
+# Role dans le projet:
+# Ce fichier implemente le client d'embeddings NVIDIA. Le retrieval l'utilise pour vectoriser chunks et requetes avant stockage/recherche.

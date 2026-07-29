@@ -85,3 +85,6 @@ def downgrade() -> None:
     op.drop_table("analyses")
     op.drop_table("jobs")
     op.drop_table("resumes")
+
+# Role dans le projet:
+# Ce fichier cree le schema PostgreSQL initial. Il definit les tables d'analyses, documents et chunks vectoriels utilises par le pipeline.

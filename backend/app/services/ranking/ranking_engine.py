@@ -6,6 +6,8 @@ DISPLAY_SCORE_DECIMALS = 2
 class RankingEngine:
     def rank(self, matches) -> list[RankedCandidate]:
         ordered = sorted(matches, key=_ranking_sort_key)
+        # Ties are based on display-rounded scores so the rank shown in the UI
+        # matches the precision recruiters actually see.
         groups = _score_groups(ordered)
 
         ranked: list[RankedCandidate] = []
@@ -29,6 +31,7 @@ class RankingEngine:
 
 def _ranking_sort_key(item) -> tuple[float, str, str]:
     match = item[0]
+    # Name and filename make ordering deterministic when final scores tie.
     return (
         -float(match.final_score),
         str(match.candidate_name or "").casefold(),
@@ -52,3 +55,6 @@ def _score_groups(ordered_matches) -> list[list]:
 
 def _display_score(item) -> float:
     return round(float(item[0].final_score), DISPLAY_SCORE_DECIMALS)
+
+# Role dans le projet:
+# Ce fichier trie les candidats et gere les ex aequo. Il reste separe du scoring pour isoler la presentation du classement.

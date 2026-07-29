@@ -37,3 +37,6 @@ exclude = [
   "backend/tests",
   "backend/alembic",
 ]
+
+# Role dans le projet:
+# Ce fichier centralise la configuration des outils Python. Pytest, coverage, ruff et mypy y lisent leurs conventions communes.

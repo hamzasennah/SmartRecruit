@@ -5,6 +5,8 @@ from typing import Any
 
 
 def coerce_string_list(value: Any, preferred_keys: tuple[str, ...] = ("value", "name", "text")) -> list[str]:
+    # LLMs sometimes return a scalar or object where the schema expects a list;
+    # coercion keeps extraction robust while validation still owns final shape.
     if value is None:
         return []
     if isinstance(value, str):
@@ -25,6 +27,8 @@ def coerce_scalar(value: Any, preferred_keys: tuple[str, ...] = ("value", "name"
     if isinstance(value, str):
         return value
     if isinstance(value, dict):
+        # Prefer semantically named keys before falling back to any string value;
+        # this reduces accidental selection from noisy model objects.
         for key in preferred_keys:
             candidate = value.get(key)
             if isinstance(candidate, str) and candidate.strip():
@@ -56,3 +60,6 @@ def coerce_year(value: Any) -> int | None:
         return int(value)
     match = re.search(r"(19|20)\d{2}", str(value))
     return int(match.group(0)) if match else None
+
+# Role dans le projet:
+# Ce fichier nettoie les formes imparfaites renvoyees par le LLM. Les extracteurs l'appellent avant validation Pydantic.

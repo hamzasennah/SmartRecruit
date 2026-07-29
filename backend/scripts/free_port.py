@@ -88,3 +88,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# Role dans le projet:
+# Ce script libere un port local avant lancement. Il aide les scripts de developpement a redemarrer FastAPI sans conflit de processus.

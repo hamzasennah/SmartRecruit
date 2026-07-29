@@ -46,3 +46,6 @@ def test_ranking_endpoint_with_text_uploads() -> None:
     payload = response.json()
     assert payload["total_candidates"] == 2
     assert payload["ranking"][0]["candidate"]["final_score"] >= payload["ranking"][1]["candidate"]["final_score"]
+
+# Role dans le projet:
+# Ce fichier couvre l'analyse ranking via API avec dependances externes. Il reste separe et conditionnel car NVIDIA/PostgreSQL sont requis.

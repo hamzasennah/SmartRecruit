@@ -418,3 +418,6 @@ def _score_class(score: float) -> str:
     if score >= 40:
         return "mid"
     return "low"
+
+# Role dans le projet:
+# Ce script transforme un resultat JSON en rapport lisible. Il sert a inspecter hors frontend les sorties du classement.

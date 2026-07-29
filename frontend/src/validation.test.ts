@@ -33,3 +33,6 @@ describe("validateSelection", () => {
     expect(result).toContain("Taille cumulee");
   });
 });
+
+// Role dans le projet:
+// Ce fichier verifie la validation frontend des fichiers. Il protege les messages et limites affiches avant l'envoi au backend.

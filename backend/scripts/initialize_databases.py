@@ -18,3 +18,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# Role dans le projet:
+# Ce script initialise les migrations de base. Il prepare PostgreSQL/pgvector avant les tests ou l'execution locale du backend.

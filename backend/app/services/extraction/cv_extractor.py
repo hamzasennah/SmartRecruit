@@ -55,6 +55,9 @@ def _role_pattern(roles: list[str]) -> re.Pattern[str]:
 
 
 KNOWN_COMPANIES = _rule_list("known_companies")
+# These raw-text hints compensate for LLM omissions by checking explicit text.
+# They improve recall, but the curated vocabulary can bias detection toward
+# skills and domains that already appear in domain_rules.json.
 RAW_TEXT_SKILL_HINTS = _rule_tuple_map("raw_text_skill_hints")
 RAW_TEXT_TOOL_SKILLS = set(_rule_list("raw_text_tool_skills"))
 RAW_TEXT_SOFT_SKILL_HINTS = _rule_tuple_map("raw_text_soft_skill_hints")
@@ -72,17 +75,24 @@ class CVExtractor:
             raw_payload = self._llm.generate_json(CV_EXTRACTION_PROMPT.format(text=_llm_input_text(document)))
         cv = validate_model(_coerce_cv_payload(raw_payload), StructuredCV)
 
+        # Normalize after validation so downstream matchers see canonical tokens
+        # instead of model phrasing. This keeps scoring explainable but ties it
+        # to the alias coverage.
         cv.skills.technical = normalize_skill_list(cv.skills.technical)
         cv.skills.tools = normalize_skill_list(cv.skills.tools)
         cv.skills.soft = normalize_skill_list(cv.skills.soft)
         for experience in cv.experiences:
             experience.job_title = _extract_role_title(experience.job_title or "")
+            # Company recovery is heuristic and intentionally conservative; it
+            # uses known companies or "chez/at" patterns rather than inventing.
             experience.company = experience.company or _extract_company(
                 " ".join([experience.job_title or "", " ".join(experience.missions)]),
                 " ".join(experience.missions),
             )
             experience.skills_used = normalize_skill_list(experience.skills_used)
         cv.experiences = _filter_professional_experiences(cv.experiences)
+        # Duration enrichment is derived from extracted dates/durations so the
+        # LLM is not trusted to compute experience months directly.
         cv.experiences = enrich_experience_durations(cv.experiences)
         for education in cv.education:
             education.normalized_level = normalize_education_level(education.normalized_level or education.degree) or ""
@@ -104,6 +114,8 @@ def _llm_input_text(document: DocumentText) -> str:
             "Texte CV tronque avant appel LLM.",
             extra={"filename": document.filename, "char_count": len(document.text), "limit": limit},
         )
+    # Truncation protects model cost/latency, but relevant evidence after this
+    # limit can be invisible to structured extraction.
     return document.text[:limit]
 
 
@@ -275,6 +287,8 @@ def enrich_languages_from_raw_text(cv: StructuredCV, raw_text: str) -> Structure
             cv.languages.append(language)
             by_language[canonical] = language
         inferred_level = _infer_language_level_from_window(normalized_text, match)
+        # Raw-text inference fills gaps left by the LLM; estimated levels remain
+        # weaker evidence than an explicit structured mention.
         if inferred_level and language_rank(inferred_level) > language_rank(language.normalized_level):
             language.normalized_level = inferred_level
     return cv
@@ -322,6 +336,8 @@ def enrich_cv_with_job_skill_evidence(
         for skill in requested_skills
         if _skill_is_explicitly_written(skill, normalized_text)
     }
+    # Requested skills that the LLM extracted but the raw CV does not explicitly
+    # mention are dropped to reduce prompt-induced false positives.
     technical = _drop_unverified_requested_skills(technical, requested_skills, verified_requested)
     tools = _drop_unverified_requested_skills(tools, requested_skills, verified_requested)
     for experience in cv.experiences:
@@ -396,6 +412,8 @@ def _contains_azure_skill_context(normalized_text: str, alias: str) -> bool:
     pattern = re.compile(rf"(?<![a-z0-9+#]){re.escape(normalized_alias)}(?![a-z0-9+#])")
     for match in pattern.finditer(normalized_text):
         window = normalized_text[match.start(): match.end() + 35]
+        # Azure AD and similar support contexts should not prove Azure data or
+        # cloud platform experience.
         if any(context in window for context in AZURE_NON_DATA_CONTEXTS):
             continue
         return True
@@ -474,4 +492,10 @@ def _is_professional_experience_title(title: str) -> bool:
         "responsable", "software", "support",
         "technicien",
     ]
+    # Filtering protects scoring from education/project fragments being counted
+    # as professional experience, but role-marker coverage should be tested
+    # across non-Data/BI resumes too.
     return any(marker in normalized for marker in role_markers)
+
+# Role dans le projet:
+# Ce fichier transforme un CV texte en StructuredCV. Il combine LLM, coercition, normalisation, enrichissements raw-text et durees.

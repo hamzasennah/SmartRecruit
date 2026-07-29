@@ -64,6 +64,8 @@ class JobExtractor:
             raw_payload = self._llm.generate_json(JOB_EXTRACTION_PROMPT.format(text=_llm_input_text(document)))
         job = validate_model(_coerce_job_payload(raw_payload), StructuredJobDescription)
 
+        # The model output is normalized and then reconciled with raw text so
+        # scoring is based on explicit evidence instead of model-only wording.
         job.required_skills.mandatory = normalize_skill_list(job.required_skills.mandatory)
         job.required_skills.preferred = normalize_skill_list(job.required_skills.preferred)
         job.required_skills.soft = normalize_skill_list(job.required_skills.soft)
@@ -88,6 +90,8 @@ def _llm_input_text(document: DocumentText) -> str:
             "Texte fiche de poste tronque avant appel LLM.",
             extra={"filename": document.filename, "char_count": len(document.text), "limit": limit},
         )
+    # The same LLM limit is used for jobs and CVs; truncation can hide late
+    # requirements, so audit logs keep the original length.
     return document.text[:limit]
 
 
@@ -208,6 +212,9 @@ def _apply_job_text_rules(job: StructuredJobDescription, text: str) -> None:
     if not job.job_title:
         job.job_title = _infer_job_title(text)
 
+    # Skills are re-bucketed from raw text to prevent languages and soft skills
+    # from inflating the technical score. The rule set is explicit, so its
+    # vocabulary balance should be audited across job families.
     mandatory, languages_from_skills, soft_from_mandatory, demoted_to_preferred = _clean_skill_bucket(
         job.required_skills.mandatory,
         demote_preferred_only=True,
@@ -246,6 +253,8 @@ def _apply_job_text_rules(job: StructuredJobDescription, text: str) -> None:
 
 def _clean_required_domains(text: str, domains: list[str]) -> list[str]:
     normalized_text = normalize_text(text)
+    # Domains are only kept when the job text explicitly frames them as required;
+    # otherwise generic industry mentions would over-penalize candidates.
     if not domains or not _has_explicit_domain_requirement(normalized_text):
         return []
     kept: list[str] = []
@@ -385,6 +394,8 @@ def _infer_job_title(text: str) -> str | None:
 def _clean_responsibilities(text: str, extracted: list[str]) -> list[str]:
     normalized = normalize_text(text)
     responsibilities: list[str] = []
+    # These deterministic responsibility templates make Data/BI postings more
+    # stable, but they are not a semantic parser and may under-cover other roles.
     if any(signal in normalized for signal in ["dashboard", "dashbord", "tableau de bord", "kpi", "reporting"]):
         responsibilities.append("Creer et ameliorer les tableaux de bord et KPI.")
     if any(signal in normalized for signal in ["data workstream", "bi data project management", "project management", "lead data"]):
@@ -417,3 +428,6 @@ def _looks_like_responsibility(value: str) -> bool:
         "reporting", "dashboard", "kpi", "workstream",
     )
     return any(signal in normalized for signal in action_signals)
+
+# Role dans le projet:
+# Ce fichier transforme une fiche de poste en StructuredJobDescription. Il normalise les criteres et applique des regles textuelles explicites.

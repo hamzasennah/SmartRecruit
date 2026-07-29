@@ -55,3 +55,6 @@ def test_generate_json_retries_invalid_json_response() -> None:
 
     assert client.generate_json("Extract facts.") == {"ok": True}
     assert client.calls == 2
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour nvidia llm. Il protege le comportement existant pendant les refactors sans appeler les services externes.

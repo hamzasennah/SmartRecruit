@@ -37,6 +37,9 @@ def _concept_groups() -> dict[str, dict[str, set[str]]]:
 STOPWORDS = set(_rule_list("stopwords"))
 CRITICAL_TERMS = _rule_list("critical_terms")
 ALLOWED_EVIDENCE_SECTIONS = set(_rule_list("allowed_evidence_sections"))
+# These thresholds and vocabularies come from domain_rules.json. They make the
+# matcher configurable, but their balance across Data/BI, developer, support,
+# and PM roles must be measured with representative CV fixtures.
 MIN_RETRIEVAL_EVIDENCE_SCORE = _rule_float("min_retrieval_evidence_score", 0.2)
 FULL_RESPONSIBILITY_THRESHOLD = _rule_float("full_responsibility_threshold", 70.0)
 PARTIAL_RESPONSIBILITY_THRESHOLD = _rule_float("partial_responsibility_threshold", 20.0)
@@ -52,6 +55,9 @@ def match_responsibilities(cv: StructuredCV, job: StructuredJobDescription, retr
     for responsibility in job.responsibilities:
         best = _best_passage_match(responsibility, passages)
         if _is_non_penalizing_responsibility(responsibility):
+            # Some broad responsibilities are kept for audit but excluded from
+            # penalties because their evidence is often implicit or too vague
+            # for keyword scoring to judge reliably.
             optional_responsibilities.append(
                 {key: best[key] for key in ["responsibility", "score", "status", "evidence"]}
             )
@@ -102,6 +108,8 @@ def _candidate_passages(cv: StructuredCV, retrieved_evidence: list[dict] | None)
     for item in retrieved_evidence or []:
         if _is_relevant_retrieved_evidence(item):
             passages.append(str(item.get("text", "")))
+    # Short fragments are dropped to reduce noisy matches; this may lose terse
+    # but valid bullet points if the extraction produced very compact missions.
     return dedupe_by_normalized_key([passage for passage in passages if len(passage.strip()) >= 20])
 
 
@@ -137,6 +145,8 @@ def _passage_match_score(responsibility: str, passage: str) -> tuple[float, str]
     covered_concepts = _covered_concepts(required_concepts, passage)
     concept_coverage = len(covered_concepts) / len(required_concepts) if required_concepts else 0.0
     token_coverage = _token_coverage(responsibility, passage)
+    # The score mixes keyword coverage and concept groups. It remains a lexical
+    # heuristic, not semantic understanding, so unseen vocabulary can be missed.
     score = round(max(
         (0.75 * critical_coverage + 0.25 * token_coverage) * 100,
         (0.75 * concept_coverage + 0.25 * token_coverage) * 60,
@@ -161,6 +171,9 @@ def _passes_responsibility_context_gate(responsibility: str, passage: str) -> bo
     responsibility_normalized = normalize_text(responsibility)
     passage_normalized = normalize_text(passage)
     if _is_data_platform_availability_responsibility(responsibility_normalized):
+        # This gate prevents generic Azure or cloud mentions from proving data
+        # platform responsibilities, but it also embeds a Data/BI-oriented
+        # vocabulary that should be audited against other job families.
         return _has_target_data_platform(passage_normalized) and _has_data_availability_context(passage_normalized)
     if _is_workstream_responsibility(responsibility_normalized):
         return _has_workflow_signal(passage_normalized) and _has_data_or_bi_signal(passage_normalized)
@@ -257,6 +270,9 @@ def _critical_coverage(terms: list[str], text: str) -> float:
 def _token_coverage(left: str, right: str) -> float:
     left_tokens = _meaningful_tokens(left)
     right_tokens = _meaningful_tokens(right)
+    # Unlike Jaccard, this divides by the responsibility token count only. It
+    # rewards coverage of the requirement, but still depends on exact tokens and
+    # stopword choices from the configured rule set.
     return len(left_tokens.intersection(right_tokens)) / len(left_tokens) if left_tokens and right_tokens else 0.0
 
 
@@ -286,3 +302,6 @@ def _meaningful_tokens(value: str) -> set[str]:
 def _terms_in_text(text: str) -> list[str]:
     normalized = normalize_text(text)
     return [term for term in CRITICAL_TERMS if normalize_text(term) in normalized]
+
+# Role dans le projet:
+# Ce fichier matche les responsabilites du job avec missions et preuves RAG. Il contient les seuils et heuristiques les plus sensibles au vocabulaire metier.

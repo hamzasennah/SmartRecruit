@@ -31,6 +31,9 @@ class AnalysisJob:
 
 class AnalysisJobManager:
     def __init__(self) -> None:
+        # Jobs are kept in process memory. This is enough for local/simple
+        # deployments, but statuses disappear on restart and are not shared
+        # across multiple backend workers.
         self._jobs: dict[str, AnalysisJob] = {}
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=settings.job_worker_count)
@@ -47,6 +50,8 @@ class AnalysisJobManager:
         job = AnalysisJob(analysis_id=analysis_id, status="pending", progress=0, upload_dir=upload_dir)
         with self._lock:
             self._jobs[analysis_id] = job
+        # The heavy pipeline is run outside the request thread so the frontend
+        # can poll progress instead of keeping one long HTTP request open.
         self._executor.submit(self._run, analysis_id, pipeline_factory, job_upload, cv_uploads, top_k)
         return job
 
@@ -69,6 +74,9 @@ class AnalysisJobManager:
             if not job:
                 return None
             if job.status in {"pending", "running"}:
+                # Cancellation is cooperative: pending jobs can be stopped
+                # immediately, while running jobs observe this flag only at
+                # coarse checkpoints.
                 job.cancel_requested = True
                 if job.status == "pending":
                     job.status = "cancelled"
@@ -144,3 +152,6 @@ class AnalysisJobManager:
 
 
 analysis_job_manager = AnalysisJobManager()
+
+# Role dans le projet:
+# Ce fichier gere les analyses asynchrones en memoire. Les routes ranking l'utilisent pour creer, consulter et annuler des jobs.

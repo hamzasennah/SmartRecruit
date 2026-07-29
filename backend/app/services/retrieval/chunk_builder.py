@@ -4,6 +4,8 @@ def split_text(text: str, chunk_size: int = 900, overlap: int = 120) -> list[str
         return []
     if len(text) <= chunk_size:
         return [text]
+    # Overlap keeps evidence near chunk boundaries searchable, at the cost of
+    # repeated tokens influencing retrieval density.
     step = max(1, chunk_size - overlap)
     return [text[i:i + chunk_size].strip() for i in range(0, len(text), step) if text[i:i + chunk_size].strip()]
 
@@ -15,3 +17,6 @@ def build_section_chunks(document_id: str, sections: dict[str, str]) -> list[dic
             chunks.append({"text": chunk_text, "metadata": {"document_id": document_id, "section": section, "chunk_index": index}})
     return chunks
 
+
+# Role dans le projet:
+# Ce fichier decoupe les sections en chunks. SectionIndexer l'utilise avant d'appeler les embeddings et le vector store.

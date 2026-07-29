@@ -40,3 +40,6 @@ def dedupe_by_normalized_key(values: list[str]) -> list[str]:
             result.append(value)
     return result
 
+
+# Role dans le projet:
+# Ce fichier fournit la normalisation textuelle commune. Tous les matchers s'en servent pour rendre les comparaisons lexicales reproductibles.

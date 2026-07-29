@@ -20,3 +20,6 @@ class ExperiencePeriod(BaseModel):
     duration_months: int
     confidence: float = 1.0
 
+
+# Role dans le projet:
+# Ce fichier definit les objets de duree et periode d'experience. Les calculs de duree et matchers l'utilisent pour compter les mois fiables.

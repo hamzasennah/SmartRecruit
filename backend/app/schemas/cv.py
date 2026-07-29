@@ -55,3 +55,6 @@ class StructuredCV(BaseModel):
     raw_text_preview: str = ""
     extraction_confidence: float = 0.0
 
+
+# Role dans le projet:
+# Ce fichier definit le schema CV structure. Il est produit par CVExtractor puis consomme par matchers, scoring et API ranking.

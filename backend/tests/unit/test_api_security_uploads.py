@@ -139,3 +139,6 @@ def test_ranking_rate_limit(monkeypatch) -> None:
 
     assert first.status_code == 200
     assert second.status_code == 429
+
+# Role dans le projet:
+# Ce fichier contient les tests unitaires pour api security uploads. Il protege le comportement existant pendant les refactors sans appeler les services externes.

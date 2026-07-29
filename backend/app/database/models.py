@@ -62,3 +62,6 @@ class VectorChunkRecord(Base):
         ),
         Index("ix_vector_chunks_namespace_document", "namespace", "document_id"),
     )
+
+# Role dans le projet:
+# Ce fichier declare les tables SQLAlchemy. Le vector store et Alembic s'appuient dessus pour persister documents, analyses et chunks.

@@ -11,6 +11,9 @@ from app.services.normalization.text_normalizer import dedupe_preserve_order, no
 def _aliases() -> dict[str, str]:
     path = settings.data_dir / "skill_aliases.json"
     data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    # Alias coverage defines what the keyword matchers can understand. Missing
+    # synonyms are not recovered semantically later, so this table is a known
+    # source of vocabulary bias.
     return {normalize_text(key): normalize_text(value) for key, value in data.items()}
 
 
@@ -25,6 +28,11 @@ def normalize_skill_list(skills: list[str]) -> list[str]:
 
 def aliases_for_skill(skill: str | None) -> list[str]:
     canonical = normalize_skill(skill)
+    # Reverse lookup is used for raw-text evidence checks; keeping the canonical
+    # term first ensures exact mentions are tested even without explicit aliases.
     aliases = [alias for alias, target in _aliases().items() if target == canonical]
     return dedupe_preserve_order([canonical, *aliases])
 
+
+# Role dans le projet:
+# Ce fichier normalise competences et alias. Il est appele par extraction, matching et enrichissement raw-text.

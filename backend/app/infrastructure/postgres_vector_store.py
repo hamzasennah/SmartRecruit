@@ -26,6 +26,9 @@ class PostgresVectorStore:
         self._engine = create_engine(database_url, pool_pre_ping=True)
         self._session_factory = sessionmaker(bind=self._engine)
         if self._vector_backend == "json":
+            # JSON mode stores vectors as plain JSON and computes cosine in
+            # Python. It keeps local/dev setups working without pgvector, but is
+            # not meant to replace indexed pgvector search at scale.
             try:
                 Base.metadata.create_all(self._engine)
             except SQLAlchemyError as exc:
@@ -43,6 +46,8 @@ class PostgresVectorStore:
         if len(chunks) != len(vectors):
             raise ValueError("Nombre de chunks different du nombre de vecteurs.")
         if self._vector_backend == "pgvector":
+            # pgvector mode delegates similarity to PostgreSQL and requires the
+            # Alembic migration/extension to be installed.
             return self._upsert_pgvector(namespace, chunks, vectors)
         try:
             with self._session_factory() as session:
@@ -189,6 +194,8 @@ class PostgresVectorStore:
         scored = []
         for row in rows:
             vector = json.loads(row.vector_json)
+            # JSON backend has no vector index; every candidate row is scored in
+            # process, so behavior is easy to test but slower on large datasets.
             scored.append(
                 {
                     "id": row.id,
@@ -263,6 +270,8 @@ def _cosine(left: list[float], right: list[float]) -> float:
 
 def _search_sort_key(item: dict) -> tuple[float, str, str, int, str]:
     metadata = item.get("metadata", {}) or {}
+    # Deterministic tie-breaking keeps tests and repeated rankings stable when
+    # cosine scores are identical.
     return (
         -float(item.get("score", 0.0)),
         str(metadata.get("document_id", "")).casefold(),
@@ -274,3 +283,6 @@ def _search_sort_key(item: dict) -> tuple[float, str, str, int, str]:
 
 def _vector_literal(vector: list[float]) -> str:
     return "[" + ",".join(f"{float(value):.12g}" for value in vector) + "]"
+
+# Role dans le projet:
+# Ce fichier encapsule le stockage vectoriel PostgreSQL. Il supporte pgvector et json pour relier RAG, persistence et tests locaux.

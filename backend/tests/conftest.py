@@ -14,3 +14,6 @@ os.environ.setdefault("NVIDIA_EMBEDDING_MODEL", "nvidia/llama-nemotron-embed-1b-
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://smartrecruit:change_me@localhost:5432/smartrecruit")
 os.environ.setdefault("SMARTRECRUIT_API_KEY", "ci-test-key")
 os.environ.setdefault("VECTOR_BACKEND", "json")
+
+# Role dans le projet:
+# Ce fichier prepare l'environnement de test backend. Il fixe des variables par defaut et nettoie l'etat partage entre tests.

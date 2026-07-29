@@ -71,6 +71,8 @@ class NvidiaAPIClient:
                     success=200 <= response.status_code < 400,
                     input_summary=self._input_summary(payload),
                 )
+                # Retry only transient provider/server statuses; other HTTP
+                # errors surface immediately through raise_for_status.
                 if response.status_code in {429, 500, 502, 503, 504} and attempt <= self.max_retries:
                     self._logger.warning(
                         "%s tentative %s/%s echouee avec HTTP %s.",
@@ -85,6 +87,8 @@ class NvidiaAPIClient:
                 return response.json()
             except (httpx.HTTPError, json.JSONDecodeError) as exc:
                 if response is None:
+                    # If no response object exists, we still write an audit event
+                    # so network failures are visible in the same log stream.
                     latency_ms = (time.perf_counter() - started_perf) * 1000
                     record_model_call(
                         provider="nvidia",
@@ -118,3 +122,6 @@ class NvidiaAPIClient:
 
     def _input_summary(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {}
+
+# Role dans le projet:
+# Ce fichier factorise le transport HTTP NVIDIA. Les clients LLM et embeddings heritent de ses retries, headers et evenements d'audit.

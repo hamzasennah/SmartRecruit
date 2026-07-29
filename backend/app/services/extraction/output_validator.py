@@ -30,6 +30,8 @@ def _json_candidates(raw: str) -> list[str]:
     text = raw.strip()
     candidates: list[str] = []
 
+    # The prompt asks for JSON only, but model responses can still include code
+    # fences; candidates are tried from strictest to most forgiving.
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
     if fenced:
         candidates.append(fenced.group(1).strip())
@@ -60,6 +62,8 @@ def _extract_balanced_json_object(text: str) -> str | None:
     in_string = False
     escaped = False
     for index, char in enumerate(text[start:], start=start):
+        # Balanced extraction respects strings and escapes so braces inside text
+        # fields do not prematurely terminate the JSON object.
         if in_string:
             if escaped:
                 escaped = False
@@ -77,3 +81,6 @@ def _extract_balanced_json_object(text: str) -> str | None:
             if depth == 0:
                 return text[start : index + 1]
     return None
+
+# Role dans le projet:
+# Ce fichier valide les sorties JSON du LLM. Il protege les schemas en isolant la logique de recuperation/parsing tolerant.

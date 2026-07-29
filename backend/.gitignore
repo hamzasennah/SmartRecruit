@@ -16,3 +16,6 @@ logs/
 !samples/
 samples/*
 !samples/.gitkeep
+
+# Role dans le projet:
+# Ce fichier limite le suivi Git dans le backend. Il garde hors depot les environnements, uploads et artefacts d'execution propres a la machine.

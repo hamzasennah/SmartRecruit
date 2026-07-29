@@ -14,6 +14,8 @@ def segment_sections(text: str) -> dict[str, str]:
     for line in lines:
         section = _section_for_line(line)
         if section:
+            # Section names drive RAG filtering later, so detection is kept to
+            # short heading-like lines rather than arbitrary body text.
             current = section
             sections.setdefault(current, [])
         else:
@@ -26,8 +28,12 @@ def segment_sections(text: str) -> dict[str, str]:
 def _section_for_line(line: str) -> str | None:
     normalized = normalize_text(line)
     if len(normalized) > 80:
+        # Long lines are usually content, not headings.
         return None
     for section, pattern in SECTION_PATTERNS.items():
         if re.fullmatch(pattern, normalized) or re.search(rf"\b{pattern}\b", normalized):
             return section
     return None
+
+# Role dans le projet:
+# Ce fichier segmente le texte en sections heuristiques. Le retrieval et l'affichage des preuves utilisent ces sections pour filtrer le contexte.

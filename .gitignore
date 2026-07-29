@@ -47,3 +47,6 @@ frontend/tsconfig.tsbuildinfo
 *.synctex.gz
 *.toc
 SmartRecruit_Documentation_Complete.pdf
+
+# Role dans le projet:
+# Ce fichier separe le code source des artefacts locaux. Il evite de versionner secrets, caches, environnements virtuels et sorties generees.

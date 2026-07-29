@@ -29,6 +29,8 @@ class DoclingParser:
         if not text:
             raise DocumentParsingError(f"Aucun texte exploitable extrait depuis {path.name}.")
         filename = filename_override or path.name
+        # Section segmentation is done immediately after text extraction so both
+        # structured extraction and RAG can refer to the same parsed document.
         return DocumentText(filename=filename, kind=kind, text=text, char_count=len(text), sections=segment_sections(text))
 
     def _extract_pdf(self, path: Path) -> str:
@@ -56,5 +58,10 @@ class DoclingParser:
         try:
             return path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
+            # Some CV exports are latin-1 encoded; fallback keeps parsing robust
+            # without silently accepting binary files, which upload checks catch.
             return path.read_text(encoding="latin-1")
 
+
+# Role dans le projet:
+# Ce fichier extrait le texte des PDF, DOCX et fichiers texte. Il nourrit ensuite segmentation, extraction LLM et indexation RAG.

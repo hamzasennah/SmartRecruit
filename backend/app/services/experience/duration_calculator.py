@@ -28,10 +28,14 @@ def calculate_experience_duration(start_raw: str | None, end_raw: str | None, de
             duration = calculate_months(start_date, end_date)
         except ValueError as error:
             return ExperienceDuration(error=str(error))
+        # Confidence documents date precision, not candidate quality. Year-only
+        # dates are estimated and should be read as weaker duration evidence.
         confidence = 0.95 if start_precision == "month" and end_precision in {"month", "present"} else 0.60 if "year" in {start_precision, end_precision} else 0.75
         return ExperienceDuration(start_date=start_date.strftime("%Y-%m"), end_date=end_date.strftime("%Y-%m"), duration_months=duration, duration_years=round(duration / 12, 2), start_precision=start_precision, end_precision=end_precision, calculation_source="date_range", confidence=confidence, estimated="year" in {start_precision, end_precision})
     declared = parse_explicit_duration(declared_duration)
     if declared is not None:
+        # Declared durations are accepted when dates cannot be parsed, but they
+        # cannot participate in overlap removal because no period is known.
         return ExperienceDuration(duration_months=declared, duration_years=round(declared / 12, 2), calculation_source="explicit_duration", confidence=0.75)
     return ExperienceDuration(error="Impossible d'interpreter les dates ou la duree declaree.")
 
@@ -40,6 +44,8 @@ def enrich_experience_durations(experiences: list[Experience], today: date | Non
     for experience in experiences:
         duration = calculate_experience_duration(experience.start_date, experience.end_date, experience.declared_duration, today=today)
         experience.duration = duration
+        # duration_months duplicates duration.duration_months for legacy callers;
+        # schema simplification can remove it once those callers use duration.
         experience.duration_months = duration.duration_months
     return experiences
 
@@ -50,3 +56,6 @@ def experience_to_period(experience: Experience) -> ExperiencePeriod | None:
         return None
     return ExperiencePeriod(start_date=duration.start_date, end_date=duration.end_date, duration_months=duration.duration_months, confidence=duration.confidence)
 
+
+# Role dans le projet:
+# Ce fichier calcule les durees d'experience a partir de dates ou durees declarees. Le CVExtractor l'utilise avant le matching d'experience.

@@ -56,6 +56,8 @@ async def save_upload(file: UploadFile, target_dir: Path, role: str) -> SavedUpl
                 if not first_chunk:
                     first_chunk = chunk[:256]
                 size += len(chunk)
+                # Size is checked while streaming so large files are rejected
+                # before they are fully written to disk.
                 if size > settings.max_upload_bytes:
                     raise UploadPolicyError(413, "Fichier trop volumineux.")
                 output.write(chunk)
@@ -69,6 +71,8 @@ async def save_upload(file: UploadFile, target_dir: Path, role: str) -> SavedUpl
         target.unlink(missing_ok=True)
         raise UploadPolicyError(400, "Fichier vide.")
     if not _content_matches_extension(suffix, first_chunk):
+        # Lightweight magic-byte checks reduce accidental or spoofed uploads
+        # before document parsers see the file.
         target.unlink(missing_ok=True)
         raise UploadPolicyError(400, "Le contenu du fichier ne correspond pas a son extension.")
     return SavedUpload(path=target, original_filename=original_name, size_bytes=size)
@@ -89,6 +93,8 @@ def ensure_total_upload_quota(uploads: list[SavedUpload]) -> None:
 
 def _safe_original_filename(value: str | None) -> str:
     candidate = Path(value or "document").name.strip()
+    # Keep the original filename for display/audit, but remove path separators
+    # and unusual characters before storing it in metadata.
     candidate = re.sub(r"[^A-Za-z0-9._ -]+", "_", candidate)
     candidate = candidate.strip(" ._-")
     return candidate or "document"
@@ -102,3 +108,6 @@ def _content_matches_extension(suffix: str, first_chunk: bytes) -> bool:
     if suffix in {".txt", ".md"}:
         return b"\x00" not in first_chunk
     return False
+
+# Role dans le projet:
+# Ce fichier gere sauvegarde temporaire et politiques d'upload. Les routes l'appellent avant tout parsing ou appel modele.

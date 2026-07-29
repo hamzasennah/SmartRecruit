@@ -30,3 +30,6 @@ def education_rank(value: str | None) -> int:
     level = normalize_education_level(value)
     return education_levels().get(level or "", 0)
 
+
+# Role dans le projet:
+# Ce fichier normalise les niveaux de formation. Les extracteurs et le matcher education l'utilisent pour comparer les diplomes.

@@ -11,6 +11,8 @@ from app.services.normalization.text_normalizer import normalize_text
 def _aliases() -> dict[str, str]:
     path = settings.data_dir / "job_title_aliases.json"
     data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    # Job-title aliases make exact comparisons less brittle, but titles outside
+    # the curated list fall back to token similarity in relevance scoring.
     return {normalize_text(key): normalize_text(value) for key, value in data.items()}
 
 
@@ -18,3 +20,6 @@ def normalize_job_title(title: str | None) -> str:
     normalized = normalize_text(title)
     return _aliases().get(normalized, normalized)
 
+
+# Role dans le projet:
+# Ce fichier normalise les intitules de poste. Il soutient la pertinence d'experience et limite les variantes lexicales.

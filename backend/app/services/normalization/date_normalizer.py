@@ -26,6 +26,8 @@ def parse_month_year(value: str | None, today: date | None = None) -> tuple[date
         return date(int(match.group(2)), MONTHS[match.group(1)], 1), "month"
     match = re.fullmatch(r"(19\d{2}|20\d{2})", normalized)
     if match:
+        # Year-only dates are anchored to July so duration estimates are centered
+        # in the year rather than biased to January or December.
         return date(int(match.group(1)), 7, 1), "year"
     return None, "unknown"
 
@@ -34,6 +36,8 @@ def calculate_months(start_date: date, end_date: date, inclusive: bool = True) -
     if end_date < start_date:
         raise ValueError("La date de fin est anterieure a la date de debut.")
     months = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
+    # Inclusive counting treats Jan-Mar as three months, matching how CV periods
+    # are usually interpreted by recruiters.
     return months + 1 if inclusive else months
 
 
@@ -42,3 +46,6 @@ def _normalize_date_text(value: str) -> str:
     value = "".join(ch for ch in unicodedata.normalize("NFD", value) if unicodedata.category(ch) != "Mn")
     value = re.sub(r"\s+", " ", value)
     return value.strip()
+
+# Role dans le projet:
+# Ce fichier normalise dates et mois bilingues. Les calculs d'experience l'utilisent pour transformer du texte CV en periodes comparables.

@@ -52,3 +52,6 @@ jobs:
         run: npm run build
       - name: Audit
         run: npm audit
+
+# Role dans le projet:
+# Ce fichier orchestre la verification continue. Il installe les dependances backend/frontend, lance les tests, et sert de filet de securite avant integration des changements.

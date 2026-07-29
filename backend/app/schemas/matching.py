@@ -29,3 +29,6 @@ class CandidateMatch(BaseModel):
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
+
+# Role dans le projet:
+# Ce fichier definit les objets de score et preuve. ScoringEngine les remplit et les routes les renvoient au frontend.

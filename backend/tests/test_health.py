@@ -8,3 +8,6 @@ def test_health() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
+
+# Role dans le projet:
+# Ce fichier verifie la route de sante. Il confirme que l'API expose les informations minimales attendues.

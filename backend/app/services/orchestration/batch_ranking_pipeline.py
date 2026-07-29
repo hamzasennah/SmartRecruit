@@ -26,6 +26,8 @@ class BatchRankingPipeline:
 
     def run(self, job_path, cv_paths, top_k: int = 5) -> RankingResponse:
         namespace = f"analysis_{uuid4().hex}"
+        # Each analysis gets an isolated namespace so vector evidence from one
+        # upload batch cannot leak into another candidate ranking.
         self._vector_store.reset_namespace(namespace)
         try:
             job_file_path, job_filename = _path_and_filename(job_path)
@@ -41,6 +43,9 @@ class BatchRankingPipeline:
                     " ".join(job.responsibilities),
                 ]
             )
+            # One shared job query is used for all CV retrieval. This is simple
+            # and comparable across candidates, but it does not tailor evidence
+            # retrieval to each individual scoring category.
             for cv_ref in cv_paths:
                 cv_path, cv_filename = _path_and_filename(cv_ref)
                 try:
@@ -52,6 +57,9 @@ class BatchRankingPipeline:
                     ):
                         document, cv = self._cv_pipeline.run(cv_path, filename_override=cv_filename)
                         enrich_cv_with_job_skill_evidence(cv, document.text, job)
+                        # RAG evidence is indexed after structured extraction;
+                        # scoring can then combine deterministic JSON fields and
+                        # semantic snippets from the same source document.
                         _create_resume_record(self._vector_store, cv_path, document, cv)
                         self._indexer.index_sections(namespace, document.filename, document.sections)
                         evidence = self._retriever.retrieve(
@@ -74,6 +82,8 @@ class BatchRankingPipeline:
             _create_analysis_record(self._vector_store, namespace, job_id, response)
             return response
         finally:
+            # Temporary vectors are cleaned even when a CV fails so later runs do
+            # not see stale chunks in either json or pgvector mode.
             self._vector_store.reset_namespace(namespace)
 
 
@@ -127,3 +137,6 @@ def _analysis_summary(response: RankingResponse) -> str:
         return "Aucun candidat classe."
     best = response.ranking[0].candidate
     return f"{response.total_candidates} candidat(s) analyses. Meilleur score: {best.candidate_name} ({best.final_score:.2f}%)."
+
+# Role dans le projet:
+# Ce fichier orchestre l'analyse complete. Il relie document parsing, LLM, enrichissement, RAG, scoring, ranking et persistence.

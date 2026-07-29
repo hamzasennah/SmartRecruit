@@ -32,3 +32,6 @@ class AnalysisJobStatus(BaseModel):
     progress: int = 0
     result: RankingResponse | None = None
     error: str | None = None
+
+# Role dans le projet:
+# Ce fichier definit les reponses de classement et de jobs async. Les routes et le frontend s'appuient sur ce contrat API.

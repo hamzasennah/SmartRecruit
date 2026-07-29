@@ -9,3 +9,6 @@ python-docx>=1.1
 SQLAlchemy>=2.0
 psycopg[binary]>=3.2
 psutil>=5.9
+
+# Role dans le projet:
+# Ce fichier liste les dependances runtime du backend FastAPI. Il est consomme par les environnements locaux, CI et deploiements Python.

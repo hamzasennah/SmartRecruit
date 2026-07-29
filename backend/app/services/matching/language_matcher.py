@@ -16,6 +16,8 @@ LEVEL_LABELS_BY_RANK = {
 
 def match_languages(cv: StructuredCV, job: StructuredJobDescription) -> dict:
     if not job.language_requirements:
+        # Absence of language requirements is treated as not applicable rather
+        # than as a failed category.
         return {"applicable": False, "score": 0.0, "matched": [], "missing": [], "details": {}}
     candidate: dict[str, int] = {}
     candidate_level_labels: dict[str, str] = {}
@@ -46,8 +48,12 @@ def match_languages(cv: StructuredCV, job: StructuredJobDescription) -> dict:
         matched.append(lang)
         candidate_rank = candidate[lang]
         if required_rank <= 0:
+            # If the job mentions a language without a level, presence is enough
+            # to earn full credit for that language.
             credits.append(1.0)
         else:
+            # Rank ratios give partial credit for being below the requested
+            # level, but the ordinal gaps are heuristic rather than psychometric.
             credits.append(min(candidate_rank / required_rank, 1.0) if candidate_rank > 0 else 0.0)
         if required_rank > 0 and candidate_rank < required_rank:
             below_required_level.append(
@@ -90,3 +96,6 @@ def _level_label(rank: int) -> str:
 
 def _level_source(language) -> str:
     return "infere depuis le CV" if getattr(language, "estimated", False) else "mention du CV"
+
+# Role dans le projet:
+# Ce fichier matche langues et niveaux. Il convertit les niveaux normalises en credits visibles dans les details d'audit.
