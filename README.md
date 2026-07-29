@@ -201,4 +201,3 @@ docs/
 - [Documentation technique complete LaTeX](docs/SmartRecruit_Documentation_Complete.tex)
 - [Guide de compilation LaTeX](docs/LATEX_COMPILATION_GUIDE.md)
 - [Rapport des commentaires de code](docs/code_comments_report.md)
-- [Rapport de mise a jour pgvector](MISE_A_JOUR_PGVECTOR.md)
