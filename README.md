@@ -1,14 +1,25 @@
 # SmartRecruit
 
-SmartRecruit est une application FastAPI + React qui analyse une fiche de poste et classe des CV avec un scoring explicable. Elle s'adresse a un contexte RH ou projet academique qui veut comparer des candidats sur des criteres visibles: competences, experience, responsabilites, formation, langues, certifications et preuves textuelles.
+SmartRecruit est une application FastAPI + React qui analyse une fiche de poste et classe des CV avec un scoring explicable. Elle s'adresse a un contexte RH ou academique qui veut comparer des candidats sur des criteres visibles: competences, experience, responsabilites, formation, langues, certifications et preuves textuelles.
 
-Le README sert de point d'entree. Les explications exhaustives sont dans [docs/](docs/README.md), et le code contient des commentaires sur les limites connues du scoring.
+Le projet utilise NVIDIA API pour l'extraction structuree et les embeddings, PostgreSQL avec pgvector pour la recherche vectorielle, et une interface React pour le suivi et la consultation du classement.
+
+## Deroulement
+
+```text
+Fiche de poste + CV
+        -> parsing des documents
+        -> extraction structuree par LLM
+        -> normalisation des donnees
+        -> chunking + embeddings
+        -> recherche pgvector des preuves
+        -> matching + scoring
+        -> classement et affichage
+```
 
 ## Objectif
 
-Le projet lit une fiche de poste et plusieurs CV, extrait leur texte, structure les informations avec un LLM NVIDIA, indexe des passages de CV avec des embeddings NVIDIA, retrouve des preuves pertinentes, puis calcule un classement final detaille.
-
-Le but n'est pas de remplacer un recruteur: le score aide a trier et auditer, mais il reste dependant de la qualite des documents, des extractions et des regles de matching.
+SmartRecruit transforme une fiche de poste et une liste de CV en classement detaille. Le score aide a trier et auditer les candidatures, tout en restant dependant de la qualite des documents, des extractions et des regles de matching.
 
 ## Fonctionnalites
 
@@ -16,7 +27,7 @@ Le but n'est pas de remplacer un recruteur: le score aide a trier et auditer, ma
 - Formats acceptes: PDF, DOCX, TXT, MD.
 - Extraction structuree des jobs et CV avec NVIDIA API.
 - Normalisation des competences, titres, langues, formations et dates.
-- Recherche de preuves par embeddings et similarite vectorielle.
+- Recherche de preuves par embeddings et similarite vectorielle pgvector.
 - Scoring par categories avec forces, faiblesses, manquants et preuves.
 - Interface React avec suivi d'analyse asynchrone.
 - Audit JSONL des appels modele, sans stocker le texte complet des CV.
@@ -27,28 +38,26 @@ Le but n'est pas de remplacer un recruteur: le score aide a trier et auditer, ma
 - Frontend: React, TypeScript, Vite, lucide-react.
 - Documents: PyMuPDF pour PDF, python-docx pour DOCX.
 - IA: `meta/llama-3.1-8b-instruct` pour l'extraction JSON, `nvidia/llama-nemotron-embed-1b-v2` pour les embeddings.
-- Donnees: PostgreSQL pour CV/jobs/analyses/chunks.
-- Vectoriel: `pgvector` actif et verifie via l'extension PostgreSQL `vector`.
+- Donnees: PostgreSQL pour CV, jobs, analyses et chunks.
+- Vectoriel: PostgreSQL avec extension pgvector.
 
-Flux resume:
+Flux technique resume:
 
 ```text
 Documents -> parsing -> extraction LLM -> normalisation
-          -> chunking + embeddings -> PostgreSQL -> retrieval
+          -> chunking + embeddings -> PostgreSQL/pgvector -> retrieval
           -> matchers par categorie -> score final -> frontend
 ```
 
-## Prerequis Verifies
+## Prerequis
 
-Environnement local utilise pour verifier cette documentation:
+- Python 3.11 ou plus.
+- Node.js et npm.
+- Docker Desktop.
+- Une cle `NVIDIA_API_KEY`.
+- PostgreSQL/pgvector via Docker, conteneur `smartrecruit-db`, image `pgvector/pgvector:pg16`, port `127.0.0.1:5433`.
 
-- Python `3.13.13`
-- Node.js `24.18.0`
-- npm `11.16.0`
-- Docker CLI `29.6.1`
-- PostgreSQL/pgvector via Docker, conteneur `smartrecruit-db`, image `pgvector/pgvector:pg16`, port `127.0.0.1:5433`
-
-La configuration Python cible `py311` dans `pyproject.toml`; utilisez donc Python 3.11 ou plus.
+La configuration Python cible `py311` dans `pyproject.toml`.
 
 ## Installation
 
@@ -66,17 +75,15 @@ cd frontend
 npm install
 ```
 
-Note: `npm ci` nettoie `node_modules`. Dans l'environnement verifie, cette commande a echoue car un serveur Vite existant verrouillait `esbuild.exe`; `npm install` a ete teste avec succes.
-
 ## Configuration
 
 Backend:
 
 - Creer `backend/.env` a partir de [backend/.env.example](backend/.env.example).
-- Renseigner une vraie valeur `NVIDIA_API_KEY`.
+- Renseigner `NVIDIA_API_KEY`.
 - Renseigner `SMARTRECRUIT_API_KEY`; le frontend doit envoyer la meme valeur.
-- Conserver `VECTOR_BACKEND=pgvector`; `json` n'est pas le mode local cible.
-- Renseigner `DATABASE_URL` vers une base PostgreSQL qui dispose de l'extension `vector`.
+- Utiliser `VECTOR_BACKEND=pgvector`.
+- Utiliser `DATABASE_URL=postgresql+psycopg://postgres:postgres@127.0.0.1:5433/smartrecruit` avec la configuration Docker fournie.
 
 Frontend:
 
@@ -91,21 +98,21 @@ VITE_MAX_TOTAL_UPLOAD_MB=100
 VITE_MAX_CV_FILES=20
 ```
 
-`VITE_API_URL=` vide fonctionne avec le frontend servi sur le meme domaine logique pendant le developpement. Pour un backend separe, utilisez par exemple `VITE_API_URL=http://127.0.0.1:8002`.
+`VITE_API_URL=` vide utilise le proxy Vite vers le backend local. Pour un backend separe, utiliser par exemple `VITE_API_URL=http://127.0.0.1:8002`.
 
 ## Base De Donnees
 
-La configuration vectorielle attendue est:
+Le backend vectoriel actif est pgvector:
 
 ```env
 VECTOR_BACKEND=pgvector
 ```
 
-Dans ce mode, les embeddings sont stockes dans la colonne `embedding vector(2048)` et la similarite cosinus est calculee par PostgreSQL/pgvector. Le backend JSON peut encore exister pour des usages legacy/dev explicites, mais il n'est pas utilise par la configuration locale verifiee.
+Les embeddings sont stockes dans `vector_chunks.embedding` en `vector(2048)`, dimension du modele `nvidia/llama-nemotron-embed-1b-v2`. La recherche utilise l'operateur cosinus pgvector `<=>`.
 
-Le fichier [backend/docker-compose.yml](backend/docker-compose.yml) fournit une image `pgvector/pgvector:pg16`, publiee par defaut sur `127.0.0.1:5433` afin d'eviter les conflits avec un PostgreSQL local sur `5432`.
+Le fichier [backend/docker-compose.yml](backend/docker-compose.yml) lance PostgreSQL/pgvector sur `127.0.0.1:5433`.
 
-Commandes verifiees pour recreer la base locale:
+Commandes de preparation:
 
 ```powershell
 cd backend
@@ -115,7 +122,7 @@ docker exec smartrecruit-db psql -U postgres -d smartrecruit -c "SELECT extname,
 python scripts/initialize_databases.py
 ```
 
-La migration cree `vector_chunks.embedding` en `vector(2048)`, dimension verifiee avec le modele `nvidia/llama-nemotron-embed-1b-v2`. Aucun index HNSW n'est cree actuellement, car pgvector limite les index HNSW sur le type `vector` a 2000 dimensions; la recherche utilise tout de meme l'operateur cosinus pgvector `<=>`.
+La migration cree `vector_chunks.embedding` en `vector(2048)`. Aucun index HNSW n'est defini sur cette colonne, car pgvector limite les index HNSW sur le type `vector` a 2000 dimensions.
 
 ## Demarrage
 
@@ -139,7 +146,7 @@ cd frontend
 npm run dev
 ```
 
-Ouvrir l'URL affichee par Vite. Le port normal est `http://127.0.0.1:5173`; dans l'environnement verifie, ce port etait deja occupe et Vite a demarre sur `http://127.0.0.1:5174`.
+Ouvrir l'URL affichee par Vite.
 
 ## Tests
 
@@ -160,7 +167,7 @@ npm test -- --run
 npm run build
 ```
 
-Les tests d'integration NVIDIA/PostgreSQL existent dans `backend/tests/integration/`, mais restent ignores par defaut via configuration d'environnement.
+Les tests d'integration NVIDIA/PostgreSQL sont dans `backend/tests/integration/` et s'activent via configuration d'environnement.
 
 ## Structure Du Projet
 
@@ -193,7 +200,7 @@ docs/
 - La similarite par tokens de type Jaccard peut penaliser des textes longs mais pertinents.
 - Certains scores `0.0` representent une absence de signal ou une categorie non applicable, pas toujours une faiblesse reelle du candidat.
 - Les poids de scoring sont fixes et globaux; ils ne s'adaptent pas encore au type de poste.
-- La configuration locale verifiee exige `pgvector`; un PostgreSQL sans extension `vector` ne peut pas indexer ni rechercher les embeddings dans ce mode.
+- Le mode pgvector exige une base PostgreSQL avec l'extension `vector`.
 
 ## Documentation Complementaire
 

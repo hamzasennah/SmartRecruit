@@ -2,25 +2,25 @@
 
 Le document technique principal est [SmartRecruit_Documentation_Complete.tex](SmartRecruit_Documentation_Complete.tex).
 
-## Statut De Verification
+## Usage
 
-La compilation LaTeX n'a pas ete executee dans l'environnement actuel: ni `xelatex` ni `pdflatex` ne sont installes localement. Le projet applicatif ne depend pas de LaTeX pour fonctionner; cette etape sert uniquement a produire un PDF de documentation.
+La compilation LaTeX sert uniquement a produire un PDF de documentation. L'application SmartRecruit ne depend pas de LaTeX pour l'installation, le demarrage, les tests ou l'analyse de CV.
 
-## Preparer La Compilation
+## Prerequis
 
-Installer une distribution LaTeX avant de compiler:
+Installer une distribution LaTeX compatible:
 
 - Windows: MiKTeX ou TeX Live.
 - Linux/macOS: TeX Live ou MacTeX.
-- En ligne: Overleaf peut compiler le fichier sans installation locale.
+- En ligne: Overleaf.
 
-Verifier ensuite que le compilateur choisi est disponible dans le terminal avant de lancer la compilation.
+Le compilateur choisi doit etre disponible dans le terminal utilise pour produire le PDF.
 
 ## Compilation
 
-Aucune commande de compilation exacte n'est documentee comme validee dans ce depot, car aucun compilateur LaTeX n'est disponible dans l'environnement de verification actuel.
+Compiler [SmartRecruit_Documentation_Complete.tex](SmartRecruit_Documentation_Complete.tex) depuis le dossier `docs/` avec le compilateur LaTeX disponible sur la machine. Deux passes de compilation stabilisent la table des matieres et les references.
 
-Sur une machine equipee de LaTeX, compiler [SmartRecruit_Documentation_Complete.tex](SmartRecruit_Documentation_Complete.tex) depuis le dossier `docs/` avec le compilateur choisi, puis refaire une passe si la table des matieres ou les references doivent etre stabilisees. Ajouter une commande precise au README seulement apres l'avoir executee avec succes dans l'environnement vise.
+Le README racine contient uniquement les commandes applicatives du projet. Les commandes LaTeX restent dans ce guide.
 
 ## Fichiers Generes
 
