@@ -40,7 +40,7 @@ Ce rapport liste les fichiers commentables modifies. Le compteur indique les com
 | `backend/app/infrastructure/nvidia_client.py` | 4 | Ce fichier factorise le transport HTTP NVIDIA. Les clients LLM et embeddings heritent de ses retries, headers et evenements d'audit. |
 | `backend/app/infrastructure/nvidia_embeddings.py` | 4 | Ce fichier implemente le client d'embeddings NVIDIA. Le retrieval l'utilise pour vectoriser chunks et requetes avant stockage/recherche. |
 | `backend/app/infrastructure/nvidia_llm.py` | 6 | Ce fichier implemente le client LLM NVIDIA. Les extracteurs de job et CV l'utilisent pour produire du JSON structure valide. |
-| `backend/app/infrastructure/postgres_vector_store.py` | 9 | Ce fichier encapsule le stockage vectoriel PostgreSQL. Il supporte pgvector et json pour relier RAG, persistence et tests locaux. |
+| `backend/app/infrastructure/postgres_vector_store.py` | 9 | Ce fichier encapsule le stockage vectoriel PostgreSQL. pgvector est le mode actif verifie; le mode json reste explicite pour usages legacy/dev, sans fallback automatique. |
 | `backend/app/main.py` | 4 | Ce fichier cree l'application FastAPI. Il valide la configuration, branche les middlewares et expose les routeurs API. |
 | `backend/app/schemas/__init__.py` | 0 | Ce fichier marque le package schemas. Il regroupe les modeles Pydantic partages par extraction, scoring, API et frontend. |
 | `backend/app/schemas/cv.py` | 0 | Ce fichier definit le schema CV structure. Il est produit par CVExtractor puis consomme par matchers, scoring et API ranking. |

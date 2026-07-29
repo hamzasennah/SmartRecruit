@@ -1,17 +1,19 @@
 services:
   postgres:
+    container_name: smartrecruit-db
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-smartrecruit}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-smartrecruit}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
 volumes:
   postgres_data:
+    name: smartrecruit_pgdata
 
 # Role dans le projet:
 # Ce fichier decrit le service PostgreSQL local avec pgvector. Il soutient les tests et demonstrations qui utilisent le backend vectoriel SQL.

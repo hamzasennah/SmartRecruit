@@ -89,6 +89,13 @@ def test_config_validation_accepts_current_shape_with_empty_optional_overrides(m
     validate_startup_settings(settings)
 
 
+def test_config_validation_accepts_explicit_json_vector_backend(monkeypatch) -> None:
+    _set_valid_startup_env(monkeypatch)
+    monkeypatch.setenv("VECTOR_BACKEND", "json")
+
+    validate_startup_settings(settings)
+
+
 class CapturingEmbeddingClient(NvidiaEmbeddingClient):
     def __init__(self, dimensions: int | None) -> None:
         super().__init__(
@@ -130,7 +137,7 @@ def _set_valid_startup_env(monkeypatch) -> None:
     monkeypatch.setenv("JOB_WORKER_COUNT", "2")
     monkeypatch.setenv("EMBEDDING_BATCH_SIZE", "32")
     monkeypatch.setenv("LLM_INPUT_CHAR_LIMIT", "12000")
-    monkeypatch.setenv("VECTOR_BACKEND", "json")
+    monkeypatch.setenv("VECTOR_BACKEND", "pgvector")
 
 # Role dans le projet:
 # Ce fichier contient les tests unitaires pour config env. Il protege le comportement existant pendant les refactors sans appeler les services externes.

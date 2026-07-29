@@ -1,6 +1,7 @@
 # Audit De Documentation
 
-Date de verification: 2026-07-29.
+Date de verification initiale: 2026-07-29.
+Mise a jour pgvector: 2026-07-30.
 
 ## Fichiers Trouves Et Actions
 
@@ -26,15 +27,18 @@ docs/
   LATEX_COMPILATION_GUIDE.md
   code_comments_report.md
   documentation_audit.md
+MISE_A_JOUR_PGVECTOR.md
 ```
 
 ## Configuration Verifiee
 
-- `.env` local: `VECTOR_BACKEND=json`.
-- `.env.example`: aligne sur `VECTOR_BACKEND=json` pour le mode local verifie.
-- `postgres_vector_store.py`: conserve aussi le mode `pgvector`.
-- Docker Desktop n'etait pas demarre dans l'environnement de verification.
-- PostgreSQL local etait accessible sur `5432`, mais sans extension `vector`.
+- `.env` local: mis a jour vers `VECTOR_BACKEND=pgvector`.
+- `.env.example`: aligne sur `VECTOR_BACKEND=pgvector`.
+- `postgres_vector_store.py`: utilise `pgvector` avec la configuration active; le mode `json` reste uniquement explicite, sans fallback automatique.
+- Docker Desktop a ete verifie avec le conteneur `smartrecruit-db` fonde sur `pgvector/pgvector:pg16`.
+- Le conteneur PostgreSQL/pgvector est publie sur `127.0.0.1:5433` pour eviter le PostgreSQL Windows local sur `5432`.
+- L'extension `vector` est active dans la base Docker avec la version `0.8.6`.
+- La table `vector_chunks` utilise `embedding vector(2048)`.
 
 ## Commandes Testees Avec Succes
 
@@ -60,6 +64,18 @@ GET http://127.0.0.1:8002/api/health
 
 Resultat observe: reponse `status=ok`, `nvidia_api_configured=true`, `database_enabled=true`.
 
+PostgreSQL/pgvector local:
+
+```powershell
+cd backend
+docker compose up -d
+docker exec smartrecruit-db psql -U postgres -d smartrecruit -c "CREATE EXTENSION IF NOT EXISTS vector;"
+docker exec smartrecruit-db psql -U postgres -d smartrecruit -c "SELECT extname, extversion FROM pg_extension WHERE extname='vector';"
+python scripts/initialize_databases.py
+```
+
+Resultat observe: conteneur `smartrecruit-db` actif sur `127.0.0.1:5433`, extension `vector 0.8.6`, revision Alembic `20260723_0001`, colonne `embedding vector(2048)`.
+
 Frontend installation:
 
 ```powershell
@@ -84,7 +100,7 @@ python -m ruff check app tests scripts
 python -m pytest tests -q
 ```
 
-Resultat observe: ruff OK; pytest `94 passed, 2 skipped`.
+Resultat observe: ruff OK; pytest `95 passed, 2 skipped`.
 
 Frontend checks:
 
@@ -100,6 +116,5 @@ Resultat observe: lint OK; vitest `4 passed`; build Vite OK.
 ## Commandes Non Documentees Comme Chemin Valide
 
 - `npm ci`: executee mais a echoue car un processus Node existant verrouillait `node_modules/@esbuild/.../esbuild.exe`. Le README documente donc `npm install`, qui a reussi.
-- `docker compose ps`: executee mais a echoue car Docker Desktop n'etait pas demarre.
-- `python scripts/initialize_databases.py`: executee mais a echoue sur le PostgreSQL local car l'extension `vector` n'etait pas installee. Cette commande n'est donc pas presentee comme etape du mode local `VECTOR_BACKEND=json`.
+- L'ancien PostgreSQL Windows sur `5432` ne dispose pas de l'extension `vector`; il ne doit pas etre utilise pour le mode pgvector actuel.
 - Compilation LaTeX: `xelatex` et `pdflatex` ne sont pas installes localement; le guide LaTeX indique ce statut au lieu de presenter la compilation comme verifiee.

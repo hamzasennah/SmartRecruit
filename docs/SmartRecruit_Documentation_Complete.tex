@@ -795,7 +795,7 @@ def embed(texts: List[str]) -> List[List[float]]:
 
 \subsubsection{Rôle exact}
 
-Abstraction du stockage vectoriel dans PostgreSQL avec extension pgvector. Gère le stockage des embeddings, la recherche par similarité vectorielle et le nettoyage des namespaces après analyse.
+Abstraction du stockage vectoriel dans PostgreSQL avec extension pgvector. La configuration locale vérifiée utilise le conteneur Docker \texttt{smartrecruit-db} (\texttt{pgvector/pgvector:pg16}) publié sur \texttt{127.0.0.1:5433}. Le store gère le stockage des embeddings, la recherche par similarité vectorielle et le nettoyage des namespaces après analyse.
 
 \subsubsection{Place dans le flux global}
 
@@ -830,7 +830,9 @@ class PostgresVectorStore:
 \begin{itemize}
     \item \textbf{Namespace par analyse} : Isole les données entre analyses. Évite les pollutions croisées et permet un nettoyage facile.
     
-    \item \textbf{Opérateur <>} : Utilise la similarité cosinus native de pgvector pour performance optimale.
+    \item \textbf{Opérateur <>} : Utilise la similarité cosinus native de pgvector. La colonne \texttt{embedding} est en \texttt{vector(2048)}, dimension vérifiée avec le modèle NVIDIA \texttt{nvidia/llama-nemotron-embed-1b-v2}.
+
+    \item \textbf{Index vectoriel} : Aucun index HNSW n'est créé actuellement, car pgvector limite les index HNSW sur le type \texttt{vector} à 2000 dimensions alors que le modèle actif retourne 2048 dimensions. Un index approximatif demanderait \texttt{halfvec} ou une projection dimensionnelle dans une migration dédiée.
     
     \item \textbf{Nettoyage en finally} : Garantit que les données ne restent pas en base après l'analyse.
 \end{itemize}
@@ -2045,7 +2047,7 @@ Modèles SQLAlchemy pour tables PostgreSQL.
         \item chunk\_id (PK)
         \item namespace (clé de groupement pour nettoyage)
         \item document\_id, section, chunk\_index
-        \item text, embedding (vector type pgvector)
+        \item text, vector\_json, embedding (\texttt{vector(2048)} pgvector)
     \end{itemize}
 \end{description}
 
@@ -2376,9 +2378,9 @@ Plusieurs couches de protection :
 
 \begin{itemize}
     \item \textbf{Avantages} : Open source, stable, support natif des vecteurs via extension pgvector
-    \item \textbf{Performance} : Recherche vectorielle native performante avec indexing
+    \item \textbf{Performance} : Recherche vectorielle native via l'opérateur cosinus pgvector \texttt{<=>}; l'index HNSW n'est pas activé avec le modèle 2048 dimensions actuel.
     \item \textbf{Flexibilité} : Peut aussi stocker les résultats d'analyses
-    \item \textbf{Fallback} : Support JSON backend pour développement sans PostgreSQL
+    \item \textbf{Configuration active} : \texttt{VECTOR\_BACKEND=pgvector}. Le mode JSON reste uniquement un choix explicite legacy/dev et n'est pas utilisé par la configuration locale vérifiée.
 \end{itemize}
 
 \subsection{NVIDIA API pour LLM et embeddings}

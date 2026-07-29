@@ -27,7 +27,7 @@ jobs:
       - name: Tests
         env:
           SMARTRECRUIT_API_KEY: ci-test-key
-          VECTOR_BACKEND: json
+          VECTOR_BACKEND: pgvector
         run: coverage run -m pytest backend/tests/unit backend/tests/test_health.py && coverage report
 
   frontend:

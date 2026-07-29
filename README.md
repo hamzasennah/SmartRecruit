@@ -28,7 +28,7 @@ Le but n'est pas de remplacer un recruteur: le score aide a trier et auditer, ma
 - Documents: PyMuPDF pour PDF, python-docx pour DOCX.
 - IA: `meta/llama-3.1-8b-instruct` pour l'extraction JSON, `nvidia/llama-nemotron-embed-1b-v2` pour les embeddings.
 - Donnees: PostgreSQL pour CV/jobs/analyses/chunks.
-- Vectoriel: configuration actuelle verifiee en local avec `VECTOR_BACKEND=json`; le mode `pgvector` existe dans le code mais demande l'extension PostgreSQL `vector`.
+- Vectoriel: `pgvector` actif et verifie via l'extension PostgreSQL `vector`.
 
 Flux resume:
 
@@ -46,7 +46,7 @@ Environnement local utilise pour verifier cette documentation:
 - Node.js `24.18.0`
 - npm `11.16.0`
 - Docker CLI `29.6.1`
-- PostgreSQL local present sur le port `5432`
+- PostgreSQL/pgvector via Docker, conteneur `smartrecruit-db`, image `pgvector/pgvector:pg16`, port `127.0.0.1:5433`
 
 La configuration Python cible `py311` dans `pyproject.toml`; utilisez donc Python 3.11 ou plus.
 
@@ -75,8 +75,8 @@ Backend:
 - Creer `backend/.env` a partir de [backend/.env.example](backend/.env.example).
 - Renseigner une vraie valeur `NVIDIA_API_KEY`.
 - Renseigner `SMARTRECRUIT_API_KEY`; le frontend doit envoyer la meme valeur.
-- Conserver `VECTOR_BACKEND=json` pour le mode local actuellement verifie.
-- Renseigner `DATABASE_URL` vers une base PostgreSQL existante.
+- Conserver `VECTOR_BACKEND=pgvector`; `json` n'est pas le mode local cible.
+- Renseigner `DATABASE_URL` vers une base PostgreSQL qui dispose de l'extension `vector`.
 
 Frontend:
 
@@ -95,15 +95,27 @@ VITE_MAX_CV_FILES=20
 
 ## Base De Donnees
 
-La configuration locale actuelle est:
+La configuration vectorielle attendue est:
 
 ```env
-VECTOR_BACKEND=json
+VECTOR_BACKEND=pgvector
 ```
 
-Dans ce mode, les vecteurs sont stockes en JSON dans PostgreSQL et la similarite cosinus est calculee en Python. Cela evite de dependre de l'extension `vector`, mais reste moins adapte a de gros volumes qu'un index pgvector.
+Dans ce mode, les embeddings sont stockes dans la colonne `embedding vector(2048)` et la similarite cosinus est calculee par PostgreSQL/pgvector. Le backend JSON peut encore exister pour des usages legacy/dev explicites, mais il n'est pas utilise par la configuration locale verifiee.
 
-Le mode `pgvector` existe dans `backend/app/infrastructure/postgres_vector_store.py` et `backend/docker-compose.yml`, mais il n'a pas ete valide dans l'environnement actuel: Docker Desktop n'etait pas demarre, et le PostgreSQL local ne disposait pas de l'extension `vector`.
+Le fichier [backend/docker-compose.yml](backend/docker-compose.yml) fournit une image `pgvector/pgvector:pg16`, publiee par defaut sur `127.0.0.1:5433` afin d'eviter les conflits avec un PostgreSQL local sur `5432`.
+
+Commandes verifiees pour recreer la base locale:
+
+```powershell
+cd backend
+docker compose up -d
+docker exec smartrecruit-db psql -U postgres -d smartrecruit -c "CREATE EXTENSION IF NOT EXISTS vector;"
+docker exec smartrecruit-db psql -U postgres -d smartrecruit -c "SELECT extname, extversion FROM pg_extension WHERE extname='vector';"
+python scripts/initialize_databases.py
+```
+
+La migration cree `vector_chunks.embedding` en `vector(2048)`, dimension verifiee avec le modele `nvidia/llama-nemotron-embed-1b-v2`. Aucun index HNSW n'est cree actuellement, car pgvector limite les index HNSW sur le type `vector` a 2000 dimensions; la recherche utilise tout de meme l'operateur cosinus pgvector `<=>`.
 
 ## Demarrage
 
@@ -181,7 +193,7 @@ docs/
 - La similarite par tokens de type Jaccard peut penaliser des textes longs mais pertinents.
 - Certains scores `0.0` representent une absence de signal ou une categorie non applicable, pas toujours une faiblesse reelle du candidat.
 - Les poids de scoring sont fixes et globaux; ils ne s'adaptent pas encore au type de poste.
-- Le mode local `VECTOR_BACKEND=json` est pratique pour developper, mais moins performant que `pgvector` pour de gros volumes.
+- La configuration locale verifiee exige `pgvector`; un PostgreSQL sans extension `vector` ne peut pas indexer ni rechercher les embeddings dans ce mode.
 
 ## Documentation Complementaire
 
@@ -189,3 +201,4 @@ docs/
 - [Documentation technique complete LaTeX](docs/SmartRecruit_Documentation_Complete.tex)
 - [Guide de compilation LaTeX](docs/LATEX_COMPILATION_GUIDE.md)
 - [Rapport des commentaires de code](docs/code_comments_report.md)
+- [Rapport de mise a jour pgvector](MISE_A_JOUR_PGVECTOR.md)

@@ -8,6 +8,7 @@ Ce dossier contient la documentation detaillee du projet. Le point d'entree rapi
 - [LATEX_COMPILATION_GUIDE.md](LATEX_COMPILATION_GUIDE.md): guide court pour compiler le document LaTeX si une distribution LaTeX est installee.
 - [code_comments_report.md](code_comments_report.md): rapport genere lors de la documentation du code par commentaires. Il liste les fichiers commentes et les roles ajoutes.
 - [documentation_audit.md](documentation_audit.md): audit des documents existants, actions prises, et preuves de verification des commandes documentees.
+- [../MISE_A_JOUR_PGVECTOR.md](../MISE_A_JOUR_PGVECTOR.md): verification fonctionnelle et mise a jour documentaire apres le passage a pgvector.
 
 ## Documents Consolides
 

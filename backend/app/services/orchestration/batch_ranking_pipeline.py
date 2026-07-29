@@ -83,7 +83,7 @@ class BatchRankingPipeline:
             return response
         finally:
             # Temporary vectors are cleaned even when a CV fails so later runs do
-            # not see stale chunks in either json or pgvector mode.
+            # not see stale chunks in pgvector.
             self._vector_store.reset_namespace(namespace)
 
 

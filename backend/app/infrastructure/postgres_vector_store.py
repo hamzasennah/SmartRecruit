@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import json
+import logging
 from uuid import uuid4
 
 from app.config import Settings
 from app.core.exceptions import ExternalServiceError
 from app.database.models import AnalysisRecord, Base, JobRecord, ResumeRecord, VectorChunkRecord
 
+logger = logging.getLogger(__name__)
+
 
 class PostgresVectorStore:
     def __init__(self, database_url: str, vector_backend: str = "pgvector") -> None:
         if not database_url:
             raise ExternalServiceError("DATABASE_URL est obligatoire pour stocker les vecteurs dans PostgreSQL.")
+        if vector_backend not in {"pgvector", "json"}:
+            raise ValueError("VECTOR_BACKEND doit valoir 'pgvector' ou 'json'.")
         try:
             from sqlalchemy import create_engine, delete, select, text
             from sqlalchemy.exc import SQLAlchemyError
@@ -26,13 +31,13 @@ class PostgresVectorStore:
         self._engine = create_engine(database_url, pool_pre_ping=True)
         self._session_factory = sessionmaker(bind=self._engine)
         if self._vector_backend == "json":
-            # JSON mode stores vectors as plain JSON and computes cosine in
-            # Python. It keeps local/dev setups working without pgvector, but is
-            # not meant to replace indexed pgvector search at scale.
+            # JSON remains an explicit legacy/dev mode, but pgvector is the
+            # verified local runtime. It is never selected as a fallback.
             try:
                 Base.metadata.create_all(self._engine)
             except SQLAlchemyError as exc:
                 raise ExternalServiceError(f"PostgreSQL indisponible: {exc}") from exc
+        logger.info("Vector store initialise avec backend=%s", self._vector_backend)
 
     def reset_namespace(self, namespace: str) -> None:
         try:
@@ -46,9 +51,10 @@ class PostgresVectorStore:
         if len(chunks) != len(vectors):
             raise ValueError("Nombre de chunks different du nombre de vecteurs.")
         if self._vector_backend == "pgvector":
-            # pgvector mode delegates similarity to PostgreSQL and requires the
-            # Alembic migration/extension to be installed.
+            # pgvector delegates similarity to PostgreSQL and requires the
+            # Alembic migration/extension to be installed before indexing chunks.
             return self._upsert_pgvector(namespace, chunks, vectors)
+        logger.info("Indexation json namespace=%s chunks=%s", namespace, len(chunks))
         try:
             with self._session_factory() as session:
                 for chunk, vector in zip(chunks, vectors, strict=True):
@@ -69,6 +75,7 @@ class PostgresVectorStore:
             raise ExternalServiceError(f"Erreur PostgreSQL pendant l'indexation vectorielle: {exc}") from exc
 
     def _upsert_pgvector(self, namespace: str, chunks: list[dict], vectors: list[list[float]]) -> None:
+        logger.info("Indexation pgvector namespace=%s chunks=%s", namespace, len(chunks))
         statement = self._text(
             """
             INSERT INTO vector_chunks
@@ -180,6 +187,7 @@ class PostgresVectorStore:
     def search(self, namespace: str, query_vector: list[float], top_k: int, filters: dict | None = None) -> list[dict]:
         if self._vector_backend == "pgvector":
             return self._search_pgvector(namespace, query_vector, top_k, filters)
+        logger.info("Recherche json namespace=%s top_k=%s filters=%s", namespace, top_k, filters or {})
         filters = filters or {}
         statement = self._select(VectorChunkRecord).where(VectorChunkRecord.namespace == namespace)
         if "document_id" in filters:
@@ -194,8 +202,6 @@ class PostgresVectorStore:
         scored = []
         for row in rows:
             vector = json.loads(row.vector_json)
-            # JSON backend has no vector index; every candidate row is scored in
-            # process, so behavior is easy to test but slower on large datasets.
             scored.append(
                 {
                     "id": row.id,
@@ -211,6 +217,7 @@ class PostgresVectorStore:
         return sorted(scored, key=_search_sort_key)[:top_k]
 
     def _search_pgvector(self, namespace: str, query_vector: list[float], top_k: int, filters: dict | None = None) -> list[dict]:
+        logger.info("Recherche pgvector namespace=%s top_k=%s filters=%s", namespace, top_k, filters or {})
         filters = filters or {}
         where = ["namespace = :namespace"]
         params: dict[str, object] = {
@@ -285,4 +292,4 @@ def _vector_literal(vector: list[float]) -> str:
     return "[" + ",".join(f"{float(value):.12g}" for value in vector) + "]"
 
 # Role dans le projet:
-# Ce fichier encapsule le stockage vectoriel PostgreSQL. Il supporte pgvector et json pour relier RAG, persistence et tests locaux.
+# Ce fichier encapsule le stockage vectoriel PostgreSQL. pgvector est le mode actif verifie; le mode json reste explicite pour usages legacy/dev, sans fallback automatique.

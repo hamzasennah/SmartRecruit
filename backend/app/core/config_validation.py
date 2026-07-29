@@ -20,8 +20,8 @@ def validate_startup_settings(settings: Settings) -> None:
     _require_text("NVIDIA_EMBEDDING_MODEL", settings.embedding_model, errors)
     _require_database_url("DATABASE_URL", settings.database_url, errors)
     _require_text("SMARTRECRUIT_API_KEY", settings.smartrecruit_api_key, errors, min_length=8)
-    # Both vector modes are intentionally accepted; deleting one requires a
-    # separate migration decision because current environments may use json.
+    # pgvector is the verified active runtime. json remains accepted only when
+    # explicitly configured; the store does not silently fall back on failure.
     _require_choice("VECTOR_BACKEND", settings.vector_backend, {"pgvector", "json"}, errors)
     _require_positive("NVIDIA_TIMEOUT", settings.llm_timeout, errors)
     _require_positive_int("NVIDIA_MAX_RETRIES", settings.llm_max_retries, errors, allow_zero=True)

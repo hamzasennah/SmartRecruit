@@ -143,8 +143,8 @@ class Settings:
 
     @property
     def vector_backend(self) -> str:
-        # pgvector is the default for production-style search, while json keeps
-        # local/test environments usable without the extension.
+        # pgvector is the only supported runtime backend in this project; the
+        # setting stays explicit so startup validation can reject stale .env files.
         return os.getenv("VECTOR_BACKEND", "pgvector").strip().lower()
 
     @property

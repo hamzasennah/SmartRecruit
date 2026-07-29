@@ -68,19 +68,20 @@ def upgrade() -> None:
             name="uq_vector_chunks_namespace_document_section_index",
         ),
     )
-    op.execute("ALTER TABLE vector_chunks ADD COLUMN embedding vector")
+    # The configured NVIDIA embedding model returns 2048-dimensional vectors;
+    # pgvector HNSW indexes require this dimension to be declared on the column.
+    op.execute("ALTER TABLE vector_chunks ADD COLUMN embedding vector(2048)")
     op.create_index("ix_vector_chunks_namespace", "vector_chunks", ["namespace"])
     op.create_index("ix_vector_chunks_document_id", "vector_chunks", ["document_id"])
     op.create_index("ix_vector_chunks_section", "vector_chunks", ["section"])
     op.create_index("ix_vector_chunks_namespace_document", "vector_chunks", ["namespace", "document_id"])
-    op.execute(
-        "CREATE INDEX ix_vector_chunks_embedding_hnsw "
-        "ON vector_chunks USING hnsw (embedding vector_cosine_ops)"
-    )
+    # HNSW on the vector type is limited to 2000 dimensions in pgvector; the
+    # current NVIDIA embedding model returns 2048 dimensions. Search still uses
+    # pgvector's cosine operator, while approximate indexing would need halfvec
+    # or a projected embedding dimension in a later migration.
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS ix_vector_chunks_embedding_hnsw")
     op.drop_table("vector_chunks")
     op.drop_table("analyses")
     op.drop_table("jobs")
