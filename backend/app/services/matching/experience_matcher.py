@@ -4,7 +4,7 @@ from app.schemas.cv import StructuredCV
 from app.schemas.job import StructuredJobDescription
 from app.services.experience.duration_calculator import experience_to_period
 from app.services.experience.overlap_manager import calculate_total_unique_months, parse_period_value
-from app.services.experience.relevance_calculator import tag_relevance
+from app.services.experience.relevance_calculator import calculate_experience_relevance
 
 
 def match_experience(cv: StructuredCV, job: StructuredJobDescription) -> dict:
@@ -23,16 +23,17 @@ def match_experience(cv: StructuredCV, job: StructuredJobDescription) -> dict:
     periods: list[tuple[date, date]] = []
     relevant: list[tuple[date, date]] = []
     explicit_total = explicit_relevant = 0
-    for experience in tag_relevance(cv.experiences, job):
+    for experience in cv.experiences:
+        relevance_score = calculate_experience_relevance(experience, job)
         period = experience_to_period(experience)
         if period:
             parsed = (parse_period_value(period.start_date), parse_period_value(period.end_date))
             periods.append(parsed)
-            if experience.relevance_score >= 0.45:
+            if relevance_score >= 0.45:
                 relevant.append(parsed)
         elif experience.duration_months:
             explicit_total += experience.duration_months
-            if experience.relevance_score >= 0.45:
+            if relevance_score >= 0.45:
                 explicit_relevant += experience.duration_months
     total_months = calculate_total_unique_months(periods) + explicit_total
     relevant_months = calculate_total_unique_months(relevant) + explicit_relevant

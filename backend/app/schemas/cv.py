@@ -19,8 +19,6 @@ class Experience(BaseModel):
     duration: ExperienceDuration | None = None
     missions: list[str] = Field(default_factory=list)
     skills_used: list[str] = Field(default_factory=list)
-    relevance_score: float = 0.0
-    confidence: float = 0.7
 
 
 class Education(BaseModel):
@@ -30,7 +28,6 @@ class Education(BaseModel):
     institution: str | None = None
     start_year: int | None = None
     end_year: int | None = None
-    confidence: float = 0.7
 
 
 class Language(BaseModel):

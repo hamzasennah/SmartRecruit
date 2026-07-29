@@ -22,12 +22,6 @@ def calculate_experience_relevance(experience: Experience, job: StructuredJobDes
     return round(sum(signals) / len(signals), 4) if signals else 0.0
 
 
-def tag_relevance(experiences: list[Experience], job: StructuredJobDescription) -> list[Experience]:
-    for experience in experiences:
-        experience.relevance_score = calculate_experience_relevance(experience, job)
-    return experiences
-
-
 def _token_similarity(left: str, right: str) -> float:
     left_tokens = set(tokenize(left))
     right_tokens = set(tokenize(right))

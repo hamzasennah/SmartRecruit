@@ -5,17 +5,20 @@ import logging
 import time
 from typing import Any
 
-import httpx
-
 from app.config import Settings
 from app.core.exceptions import ExternalServiceError, OutputValidationError
-from app.core.model_audit import provider_request_id, record_model_call, utc_now_iso
+from app.infrastructure.nvidia_client import NvidiaAPIClient
 from app.services.extraction.output_validator import parse_json_payload
 
 logger = logging.getLogger(__name__)
 
 
-class NvidiaLLMClient:
+class NvidiaLLMClient(NvidiaAPIClient):
+    call_type = "llm"
+    missing_api_key_message = "NVIDIA_API_KEY est obligatoire pour appeler le modele NVIDIA."
+    retry_log_label = "NVIDIA LLM"
+    unavailable_error_prefix = "NVIDIA LLM indisponible"
+
     def __init__(
         self,
         api_key: str,
@@ -28,14 +31,15 @@ class NvidiaLLMClient:
         temperature: float,
         seed: int | None = 0,
     ) -> None:
-        if not api_key:
-            raise ExternalServiceError("NVIDIA_API_KEY est obligatoire pour appeler le modele NVIDIA.")
-        self.api_key = api_key
-        self.base_url = base_url
-        self.model = model
-        self.timeout = timeout
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
+        super().__init__(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            timeout=timeout,
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+            logger=logger,
+        )
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.seed = seed
@@ -89,89 +93,13 @@ class NvidiaLLMClient:
                 break
         raise ExternalServiceError("La reponse NVIDIA LLM n'est pas un JSON exploitable.") from last_error
 
-    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        url = f"{self.base_url}{path}"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
+    def _input_summary(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "message_count": len(payload.get("messages", [])),
+            "max_tokens": payload.get("max_tokens"),
+            "temperature": payload.get("temperature"),
+            "seed": payload.get("seed"),
         }
-        last_error: Exception | None = None
-        for attempt in range(1, self.max_retries + 2):
-            started_at = utc_now_iso()
-            started_perf = time.perf_counter()
-            response: httpx.Response | None = None
-            try:
-                response = httpx.post(url, headers=headers, json=payload, timeout=self.timeout)
-                latency_ms = (time.perf_counter() - started_perf) * 1000
-                record_model_call(
-                    provider="nvidia",
-                    call_type="llm",
-                    method="POST",
-                    url=url,
-                    endpoint=path,
-                    model=str(payload.get("model", self.model)),
-                    started_at=started_at,
-                    latency_ms=latency_ms,
-                    attempt=attempt,
-                    max_attempts=self.max_retries + 1,
-                    status_code=response.status_code,
-                    provider_request_id_value=provider_request_id(response.headers),
-                    success=200 <= response.status_code < 400,
-                    input_summary={
-                        "message_count": len(payload.get("messages", [])),
-                        "max_tokens": payload.get("max_tokens"),
-                        "temperature": payload.get("temperature"),
-                        "seed": payload.get("seed"),
-                    },
-                )
-                if response.status_code in {429, 500, 502, 503, 504} and attempt <= self.max_retries:
-                    logger.warning(
-                        "NVIDIA LLM tentative %s/%s echouee avec HTTP %s.",
-                        attempt,
-                        self.max_retries + 1,
-                        response.status_code,
-                    )
-                    time.sleep(self.retry_delay)
-                    continue
-                response.raise_for_status()
-                return response.json()
-            except (httpx.HTTPError, json.JSONDecodeError) as exc:
-                if response is None:
-                    latency_ms = (time.perf_counter() - started_perf) * 1000
-                    record_model_call(
-                        provider="nvidia",
-                        call_type="llm",
-                        method="POST",
-                        url=url,
-                        endpoint=path,
-                        model=str(payload.get("model", self.model)),
-                        started_at=started_at,
-                        latency_ms=latency_ms,
-                        attempt=attempt,
-                        max_attempts=self.max_retries + 1,
-                        success=False,
-                        error_type=type(exc).__name__,
-                        error_message=str(exc),
-                        input_summary={
-                            "message_count": len(payload.get("messages", [])),
-                            "max_tokens": payload.get("max_tokens"),
-                            "temperature": payload.get("temperature"),
-                            "seed": payload.get("seed"),
-                        },
-                    )
-                last_error = exc
-                if attempt <= self.max_retries:
-                    logger.warning(
-                        "NVIDIA LLM tentative %s/%s echouee: %s",
-                        attempt,
-                        self.max_retries + 1,
-                        exc,
-                    )
-                    time.sleep(self.retry_delay)
-                    continue
-                break
-        raise ExternalServiceError(f"NVIDIA LLM indisponible: {last_error}") from last_error
 
 
 def get_llm_client(settings: Settings) -> NvidiaLLMClient:
