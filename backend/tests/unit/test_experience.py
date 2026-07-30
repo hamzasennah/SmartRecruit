@@ -30,6 +30,59 @@ def test_full_day_month_year_date_with_depuis_is_parsed() -> None:
     assert result.confidence == 0.95
 
 
+def test_current_marker_without_end_date_uses_today() -> None:
+    result = calculate_experience_duration("Depuis 22/04/2024", None, today=date(2025, 4, 1))
+    assert result.duration_months == 13
+    assert result.start_date == "2024-04"
+    assert result.end_date == "2025-04"
+    assert result.end_precision == "present"
+    assert result.calculation_source == "date_range_current_marker"
+
+
+def test_single_field_date_range_is_split() -> None:
+    result = calculate_experience_duration("Mar 2022 - Juil 2022", None)
+    assert result.duration_months == 5
+    assert result.start_date == "2022-03"
+    assert result.end_date == "2022-07"
+    assert result.calculation_source == "date_range_single_field"
+
+
+def test_english_current_date_range_is_split() -> None:
+    result = calculate_experience_duration("June 2025 - Present", None, today=date(2026, 7, 1))
+    assert result.duration_months == 14
+    assert result.start_date == "2025-06"
+    assert result.end_date == "2026-07"
+
+
+def test_year_only_dates_use_full_year_boundaries() -> None:
+    result = calculate_experience_duration("2021", "2022")
+    assert result.duration_months == 24
+    assert result.start_date == "2021-01"
+    assert result.end_date == "2022-12"
+    assert result.estimated is True
+    assert result.confidence == 0.60
+
+
+def test_french_dotted_month_abbreviation() -> None:
+    result = calculate_experience_duration("janv. 2024", "aout 2024")
+    assert result.duration_months == 8
+    assert result.start_date == "2024-01"
+    assert result.end_date == "2024-08"
+
+
+def test_unambiguous_us_numeric_date() -> None:
+    result = calculate_experience_duration("04/22/2024", "Present", today=date(2025, 4, 1))
+    assert result.duration_months == 13
+    assert result.start_date == "2024-04"
+
+
+def test_unreasonable_duration_is_reported_not_counted() -> None:
+    result = calculate_experience_duration("1900", "Present", today=date(2025, 4, 1))
+    assert result.duration_months is None
+    assert result.confidence == 0.0
+    assert result.error == "Duree d'experience non plausible: 1504 mois."
+
+
 def test_overlap_periods_not_counted_twice() -> None:
     periods = [(date(2021, 1, 1), date(2022, 12, 1)), (date(2022, 6, 1), date(2023, 12, 1))]
     assert calculate_total_unique_months(periods) == 36
