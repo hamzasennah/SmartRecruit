@@ -8,7 +8,7 @@
       "azure": ["azure", "microsoft azure"],
       "azure ad": ["azure ad", "azure active directory"],
       "dashboard": ["dashboard", "dashbord", "tableau de bord", "tableaux de bord"],
-      "kpi": ["kpi", "key performance indicator", "indicateur cle", "indicateurs cles"],
+      "kpi": ["kpi", "kpis", "key performance indicator", "key performance indicators", "indicateur cle", "indicateurs cles", "indicateur kpi", "indicateurs kpi"],
       "data visualization": ["data visualization", "data visualisation", "visualisation de donnees", "visualisation des donnees"],
       "machine learning": ["machine learning", "machine-learning", "ml"],
       "python": ["python"],
@@ -220,7 +220,7 @@
       "power bi": {"bucket": "mandatory", "hints": ["power bi", "powerbi"]},
       "excel": {"bucket": "mandatory", "hints": ["excel"]},
       "dashboard": {"bucket": "mandatory", "hints": ["dashboard", "dashbord", "tableau de bord"]},
-      "kpi": {"bucket": "mandatory", "hints": ["kpi"]},
+      "kpi": {"bucket": "mandatory", "hints": ["kpi", "kpis", "key performance indicator", "key performance indicators", "indicateur cle", "indicateurs cles", "indicateur kpi", "indicateurs kpi"]},
       "snowflake": {"bucket": "mandatory", "hints": ["snowflake"]},
       "azure": {"bucket": "mandatory", "hints": ["azure"]},
       "python": {"bucket": "mandatory", "hints": ["python"]},
@@ -362,8 +362,8 @@
     "partial_responsibility_threshold": 20.0,
     "concept_groups": {
       "dashboard_reporting": {
-        "responsibility": ["dashboard", "dashbord", "tableau de bord", "kpi", "reporting"],
-        "evidence": ["dashboard", "dashbord", "tableau de bord", "kpi", "reporting", "visualisation", "visualization", "tableaux de suivi"]
+        "responsibility": ["dashboard", "dashbord", "tableau de bord", "kpi", "kpis", "indicateur kpi", "indicateurs kpi", "reporting"],
+        "evidence": ["dashboard", "dashbord", "tableau de bord", "kpi", "kpis", "indicateur kpi", "indicateurs kpi", "reporting", "visualisation", "visualization", "tableaux de suivi"]
       },
       "data_processing": {
         "responsibility": ["data", "donnees", "snowflake", "azure", "data lake", "datalake", "disponibilite"],

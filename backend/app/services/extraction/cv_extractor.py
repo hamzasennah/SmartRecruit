@@ -440,8 +440,8 @@ def _prepare_professional_experiences(experiences: list[Experience], raw_text: s
 def _is_internship_experience(experience: Experience, raw_context: str, raw_text: str) -> bool:
     if _contains_internship_marker(raw_context):
         return True
-    date_window = _experience_date_window(experience, raw_text)
-    return _contains_internship_marker(date_window)
+    date_context = _experience_date_context(experience, raw_text)
+    return _contains_internship_marker(date_context)
 
 
 def _contains_internship_marker(value: str) -> bool:
@@ -479,6 +479,24 @@ def _experience_date_window(experience: Experience, raw_text: str) -> str:
         index = normalized_text.find(normalized_value)
         if index >= 0:
             return normalized_text[max(0, index - 100): index + len(normalized_value) + 45]
+    return ""
+
+
+def _experience_date_context(experience: Experience, raw_text: str) -> str:
+    return _experience_date_line_context(experience, raw_text) or _experience_date_window(experience, raw_text)
+
+
+def _experience_date_line_context(experience: Experience, raw_text: str) -> str:
+    lines = [normalize_text(line) for line in re.split(r"[\n\r]+", raw_text) if normalize_text(line)]
+    for value in (experience.start_date, experience.end_date):
+        normalized_value = normalize_text(value)
+        if not normalized_value:
+            continue
+        for index, line in enumerate(lines):
+            if normalized_value in line:
+                start = max(0, index - 1)
+                end = min(len(lines), index + 2)
+                return " ".join(lines[start:end])
     return ""
 
 

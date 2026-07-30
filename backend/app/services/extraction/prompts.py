@@ -15,6 +15,7 @@ REGLES D'EXTRACTION:
 - Preserve les dates telles qu'elles sont ecrites. Si une date est absente ou incertaine, utilise null.
 - Si le texte est en francais, garde les noms, intitules, diplomes et entreprises tels qu'ils sont ecrits.
 - Garde les competences atomiques: "Python", "Power BI", "PostgreSQL" plutot que des phrases longues.
+- Si un terme est explicitement ecrit au pluriel, garde sa forme atomique canonique: "KPIs" -> "KPI", "dashboards" -> "dashboard".
 - Les missions et descriptions doivent etre courtes, factuelles, et limitees a 160 caracteres.
 """
 

@@ -594,6 +594,23 @@ def test_cv_job_skill_enrichment_removes_unverified_requested_llm_skills() -> No
     assert "kpi" in candidate_skills
 
 
+def test_cv_job_skill_enrichment_detects_plural_kpis_from_raw_text() -> None:
+    raw_text = """
+    Developed measures and KPIs using the DAX language.
+    """
+    cv = StructuredCV(
+        candidate_name="Najlae Hmimina",
+        skills=SkillSet(technical=[], tools=[]),
+    )
+    job = StructuredJobDescription(
+        required_skills=RequiredSkills(mandatory=["KPI"])
+    )
+
+    enrich_cv_with_job_skill_evidence(cv, raw_text, job)
+
+    assert "kpi" in cv.skills.technical + cv.skills.tools
+
+
 def test_cv_extractor_does_not_count_internships_as_professional_experience() -> None:
     document = DocumentText(filename="candidate.txt", text="CV Candidate", char_count=12)
     llm_payload = {
@@ -607,6 +624,35 @@ def test_cv_extractor_does_not_count_internships_as_professional_experience() ->
     cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
 
     assert [experience.job_title for experience in cv.experiences] == ["Developpeur Data"]
+
+
+def test_cv_extractor_filters_internship_marker_on_line_after_date() -> None:
+    text = """
+    Najlae Hmimina
+    Professional Experience
+    Groupe LabelVie
+    February 2025 - July 2025
+    Data Analyst / BI Developer - Final Year Internship
+    Developed measures and KPIs using the DAX language.
+    """
+    document = DocumentText(filename="najlae.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Najlae Hmimina",
+        "experiences": [
+            {
+                "job_title": "Data Analyst / BI Developer",
+                "company": "Groupe LabelVie",
+                "start_date": "February 2025",
+                "end_date": "July 2025",
+                "missions": ["Developed measures and KPIs using the DAX language."],
+                "skills_used": ["Power BI", "KPI"],
+            }
+        ],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.experiences == []
 
 
 def test_cv_extractor_counts_current_depuis_role_and_filters_stage_dates() -> None:
