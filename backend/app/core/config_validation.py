@@ -38,7 +38,6 @@ def validate_startup_settings(settings: Settings) -> None:
     _require_positive_int("MAX_TOTAL_UPLOAD_BYTES", settings.max_total_upload_bytes, errors)
     if settings.max_total_upload_bytes < settings.max_upload_bytes:
         errors.append("MAX_TOTAL_UPLOAD_BYTES doit etre superieur ou egal a MAX_UPLOAD_BYTES.")
-    _require_positive_int("MAX_CV_FILES", settings.max_cv_files, errors)
     _require_positive_int("UPLOAD_CHUNK_BYTES", settings.upload_chunk_bytes, errors)
     _require_positive_int("RATE_LIMIT_REQUESTS", settings.rate_limit_requests, errors)
     _require_positive_int("RATE_LIMIT_WINDOW_SECONDS", settings.rate_limit_window_seconds, errors)

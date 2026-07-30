@@ -10,13 +10,12 @@ describe("validateSelection", () => {
     expect(validateSelection(null, [])).toContain("fiche de poste");
   });
 
-  it("enforces CV count", () => {
-    const result = validateSelection(file("job.txt"), [file("a.txt"), file("b.txt")], {
-      maxCvFiles: 1,
+  it("does not impose an arbitrary CV count limit", () => {
+    const result = validateSelection(file("job.txt"), Array.from({ length: 30 }, (_, index) => file(`cv${index}.txt`)), {
       maxUploadMb: 1,
       maxTotalUploadMb: 10,
     });
-    expect(result).toContain("Nombre maximal");
+    expect(result).toBeNull();
   });
 
   it("enforces file extensions", () => {
@@ -26,7 +25,6 @@ describe("validateSelection", () => {
 
   it("enforces total size", () => {
     const result = validateSelection(file("job.txt", 6), [file("cv.txt", 6)], {
-      maxCvFiles: 2,
       maxUploadMb: 1,
       maxTotalUploadMb: 0.00001,
     });

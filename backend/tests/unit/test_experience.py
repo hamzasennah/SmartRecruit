@@ -21,6 +21,15 @@ def test_french_abbreviated_month_range_duration() -> None:
     assert result.end_date == "2022-07"
 
 
+def test_full_day_month_year_date_with_depuis_is_parsed() -> None:
+    result = calculate_experience_duration("Depuis 22/04/2024", "Present", today=date(2025, 4, 1))
+    assert result.duration_months == 13
+    assert result.start_date == "2024-04"
+    assert result.end_date == "2025-04"
+    assert result.start_precision == "day"
+    assert result.confidence == 0.95
+
+
 def test_overlap_periods_not_counted_twice() -> None:
     periods = [(date(2021, 1, 1), date(2022, 12, 1)), (date(2022, 6, 1), date(2023, 12, 1))]
     assert calculate_total_unique_months(periods) == 36

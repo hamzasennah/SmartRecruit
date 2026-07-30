@@ -81,8 +81,6 @@ async def save_upload(file: UploadFile, target_dir: Path, role: str) -> SavedUpl
 def ensure_cv_quota(cv_files: list[UploadFile]) -> None:
     if not cv_files:
         raise UploadPolicyError(400, "Ajoutez au moins un CV.")
-    if len(cv_files) > settings.max_cv_files:
-        raise UploadPolicyError(413, f"Nombre maximal de CV depasse ({settings.max_cv_files}).")
 
 
 def ensure_total_upload_quota(uploads: list[SavedUpload]) -> None:

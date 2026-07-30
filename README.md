@@ -120,10 +120,10 @@ VITE_API_URL=
 VITE_SMARTRECRUIT_API_KEY=change_me_for_local_development
 VITE_MAX_UPLOAD_MB=20
 VITE_MAX_TOTAL_UPLOAD_MB=100
-VITE_MAX_CV_FILES=20
 ```
 
 `VITE_API_URL=` vide utilise le proxy Vite vers le backend local. Pour un backend separe, utiliser par exemple `VITE_API_URL=http://127.0.0.1:8002`.
+Le nombre de CV n'est pas limite par une variable applicative; seules les limites de taille par fichier et de taille totale protegent l'upload.
 
 ## Base De Donnees
 

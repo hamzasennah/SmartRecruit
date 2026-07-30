@@ -34,7 +34,6 @@ def _files() -> list[tuple[str, tuple[str, bytes, str]]]:
 def test_ranking_job_lifecycle(monkeypatch) -> None:
     monkeypatch.setenv("SMARTRECRUIT_API_KEY", "job-secret")
     monkeypatch.setenv("RATE_LIMIT_REQUESTS", "1")
-    monkeypatch.setenv("MAX_CV_FILES", "20")
     rate_limiter.reset()
     analysis_job_manager.reset()
     monkeypatch.setattr(ranking, "get_batch_ranking_pipeline", lambda: FakePipeline())

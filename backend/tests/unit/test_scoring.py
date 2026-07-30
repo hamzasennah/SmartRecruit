@@ -1,3 +1,5 @@
+from datetime import date
+
 from app.schemas.cv import Education, Experience, Language, SkillSet, StructuredCV
 from app.schemas.job import ExperienceRequirement, LanguageRequirement, RequiredSkills, StructuredJobDescription
 from app.services.experience.duration_calculator import enrich_experience_durations
@@ -263,6 +265,28 @@ def test_language_matching_does_not_mark_present_language_missing_when_level_is_
     ]
 
 
+def test_language_matching_gives_partial_credit_when_level_is_not_precise() -> None:
+    cv = StructuredCV(
+        languages=[
+            Language(language="francais", normalized_level=None),
+            Language(language="anglais", normalized_level=None),
+        ],
+    )
+    job = StructuredJobDescription(
+        language_requirements=[
+            LanguageRequirement(language="French", minimum_level="fluent"),
+            LanguageRequirement(language="English", minimum_level="fluent"),
+        ],
+    )
+
+    result = match_languages(cv, job)
+
+    assert result["matched"] == ["francais", "anglais"]
+    assert result["missing"] == []
+    assert result["score"] == 60.0
+    assert result["details"]["unknown_level_credit"] == 0.6
+
+
 def test_language_matching_scores_native_as_full_credit() -> None:
     cv = StructuredCV(languages=[Language(language="English", normalized_level="native")])
     job = StructuredJobDescription(
@@ -306,6 +330,37 @@ def test_experience_matching_adds_dated_periods_and_explicit_durations() -> None
 
     assert result["details"]["total_experience_months"] == 24
     assert result["details"]["relevant_experience_months"] == 24
+    assert result["score"] == 100.0
+
+
+def test_data_analyst_experience_with_full_date_and_mission_evidence_is_relevant() -> None:
+    cv = StructuredCV(
+        skills=SkillSet(technical=[]),
+        experiences=enrich_experience_durations(
+            [
+                Experience(
+                    job_title="Data Analyst",
+                    start_date="Depuis 22/04/2024",
+                    end_date="Present",
+                    missions=[
+                        "Conception de rapports Power BI, tableaux de bord et analyses avancees avec Microsoft Excel.",
+                    ],
+                )
+            ],
+            today=date(2025, 4, 1),
+        ),
+    )
+    job = StructuredJobDescription(
+        job_title="Data Analyst",
+        required_skills=RequiredSkills(mandatory=["power bi", "excel", "dashboard"]),
+        experience_requirements=ExperienceRequirement(minimum_months=12),
+        responsibilities=["Creer et ameliorer les tableaux de bord et KPI."],
+    )
+
+    result = match_experience(cv, job)
+
+    assert result["details"]["total_experience_months"] == 13
+    assert result["details"]["relevant_experience_months"] == 13
     assert result["score"] == 100.0
 
 

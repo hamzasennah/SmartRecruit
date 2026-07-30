@@ -129,7 +129,6 @@ def _set_valid_startup_env(monkeypatch) -> None:
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://smartrecruit:change_me@localhost:5432/smartrecruit")
     monkeypatch.setenv("MAX_UPLOAD_MB", "20")
     monkeypatch.setenv("MAX_TOTAL_UPLOAD_MB", "100")
-    monkeypatch.setenv("MAX_CV_FILES", "20")
     monkeypatch.setenv("UPLOAD_CHUNK_BYTES", "1048576")
     monkeypatch.setenv("SMARTRECRUIT_API_KEY", "local-development-key")
     monkeypatch.setenv("RATE_LIMIT_REQUESTS", "20")

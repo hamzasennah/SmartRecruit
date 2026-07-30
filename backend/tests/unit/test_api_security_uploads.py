@@ -51,9 +51,8 @@ def test_ranking_rejects_when_auth_is_not_configured(monkeypatch) -> None:
             pass
 
 
-def test_ranking_enforces_cv_quota_before_pipeline(monkeypatch) -> None:
+def test_ranking_accepts_multiple_cvs_without_count_quota(monkeypatch) -> None:
     monkeypatch.setenv("SMARTRECRUIT_API_KEY", "quota-secret")
-    monkeypatch.setenv("MAX_CV_FILES", "1")
     rate_limiter.reset()
     fake = FakePipeline()
     monkeypatch.setattr(ranking, "get_batch_ranking_pipeline", lambda: fake)
@@ -66,14 +65,13 @@ def test_ranking_enforces_cv_quota_before_pipeline(monkeypatch) -> None:
             data={"top_k": "3"},
         )
 
-    assert response.status_code == 413
-    assert fake.seen_job is None
+    assert response.status_code == 200
+    assert len(fake.seen_cvs) == 2
 
 
 def test_ranking_enforces_upload_size(monkeypatch) -> None:
     monkeypatch.setenv("SMARTRECRUIT_API_KEY", "size-secret")
     monkeypatch.setenv("MAX_UPLOAD_BYTES", "4")
-    monkeypatch.setenv("MAX_CV_FILES", "20")
     rate_limiter.reset()
 
     with TestClient(app) as client:
@@ -91,7 +89,6 @@ def test_ranking_enforces_upload_size(monkeypatch) -> None:
 def test_ranking_saves_random_files_and_cleans_upload_dir(monkeypatch) -> None:
     monkeypatch.setenv("SMARTRECRUIT_API_KEY", "clean-secret")
     monkeypatch.delenv("MAX_UPLOAD_BYTES", raising=False)
-    monkeypatch.setenv("MAX_CV_FILES", "20")
     rate_limiter.reset()
     fake = FakePipeline()
     monkeypatch.setattr(ranking, "get_batch_ranking_pipeline", lambda: fake)
@@ -119,7 +116,6 @@ def test_ranking_rate_limit(monkeypatch) -> None:
     monkeypatch.setenv("SMARTRECRUIT_API_KEY", "rate-secret")
     monkeypatch.setenv("RATE_LIMIT_REQUESTS", "1")
     monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "60")
-    monkeypatch.setenv("MAX_CV_FILES", "20")
     rate_limiter.reset()
     monkeypatch.setattr(ranking, "get_batch_ranking_pipeline", lambda: FakePipeline())
 

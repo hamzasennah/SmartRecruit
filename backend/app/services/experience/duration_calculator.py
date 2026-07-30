@@ -30,7 +30,9 @@ def calculate_experience_duration(start_raw: str | None, end_raw: str | None, de
             return ExperienceDuration(error=str(error))
         # Confidence documents date precision, not candidate quality. Year-only
         # dates are estimated and should be read as weaker duration evidence.
-        confidence = 0.95 if start_precision == "month" and end_precision in {"month", "present"} else 0.60 if "year" in {start_precision, end_precision} else 0.75
+        start_is_precise = start_precision in {"day", "month"}
+        end_is_precise = end_precision in {"day", "month", "present"}
+        confidence = 0.95 if start_is_precise and end_is_precise else 0.60 if "year" in {start_precision, end_precision} else 0.75
         return ExperienceDuration(start_date=start_date.strftime("%Y-%m"), end_date=end_date.strftime("%Y-%m"), duration_months=duration, duration_years=round(duration / 12, 2), start_precision=start_precision, end_precision=end_precision, calculation_source="date_range", confidence=confidence, estimated="year" in {start_precision, end_precision})
     declared = parse_explicit_duration(declared_duration)
     if declared is not None:

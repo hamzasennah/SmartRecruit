@@ -110,10 +110,6 @@ class Settings:
         return int(value) if value else self.max_total_upload_mb * 1024 * 1024
 
     @property
-    def max_cv_files(self) -> int:
-        return int(os.getenv("MAX_CV_FILES", "20"))
-
-    @property
     def upload_chunk_bytes(self) -> int:
         return int(os.getenv("UPLOAD_CHUNK_BYTES", str(1024 * 1024)))
 

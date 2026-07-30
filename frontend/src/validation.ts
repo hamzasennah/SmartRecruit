@@ -1,13 +1,11 @@
 export const SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".md"];
 
 export type FileLimits = {
-  maxCvFiles: number;
   maxUploadMb: number;
   maxTotalUploadMb: number;
 };
 
 export const DEFAULT_FILE_LIMITS: FileLimits = {
-  maxCvFiles: Number(import.meta.env.VITE_MAX_CV_FILES || 20),
   maxUploadMb: Number(import.meta.env.VITE_MAX_UPLOAD_MB || 20),
   maxTotalUploadMb: Number(import.meta.env.VITE_MAX_TOTAL_UPLOAD_MB || 100),
 };
@@ -15,9 +13,6 @@ export const DEFAULT_FILE_LIMITS: FileLimits = {
 export function validateSelection(jobFile: File | null, cvFiles: File[], limits: FileLimits = DEFAULT_FILE_LIMITS): string | null {
   if (!jobFile || cvFiles.length === 0) {
     return "Ajoutez une fiche de poste et au moins un CV.";
-  }
-  if (cvFiles.length > limits.maxCvFiles) {
-    return `Nombre maximal de CV depasse (${limits.maxCvFiles}).`;
   }
   const allFiles = [jobFile, ...cvFiles];
   const maxBytes = limits.maxUploadMb * 1024 * 1024;

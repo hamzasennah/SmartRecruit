@@ -960,7 +960,7 @@ async def save_upload(file: UploadFile, upload_dir, doc_type):
     """
 
 def ensure_cv_quota(cv_files):
-    """Vérifie que le nombre de CV <= MAX_CV_FILES"""
+    """Vérifie uniquement qu'au moins un CV est fourni"""
 
 def ensure_total_upload_quota(uploads):
     """Vérifie que la taille totale <= MAX_TOTAL_UPLOAD_MB"""
@@ -2188,11 +2188,6 @@ export function validateFile(file: File): ValidationError | null {
 }
 
 export function validateUploads(jobFile: File, cvFiles: File[]): ValidationError | null {
-    const maxCvs = VITE_MAX_CV_FILES;
-    if (cvFiles.length > maxCvs) {
-        return { message: `Trop de CVs (max ${maxCvs})` };
-    }
-    
     const totalSize = [jobFile, ...cvFiles].reduce((s, f) => s + f.size, 0);
     const maxTotal = VITE_MAX_TOTAL_UPLOAD_MB * 1024 * 1024;
     if (totalSize > maxTotal) {

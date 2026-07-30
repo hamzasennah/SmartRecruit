@@ -12,6 +12,7 @@ LEVEL_LABELS_BY_RANK = {
     6: "bilingue",
     7: "natif",
 }
+UNKNOWN_LEVEL_LANGUAGE_CREDIT = 0.6
 
 
 def match_languages(cv: StructuredCV, job: StructuredJobDescription) -> dict:
@@ -54,7 +55,7 @@ def match_languages(cv: StructuredCV, job: StructuredJobDescription) -> dict:
         else:
             # Rank ratios give partial credit for being below the requested
             # level, but the ordinal gaps are heuristic rather than psychometric.
-            credits.append(min(candidate_rank / required_rank, 1.0) if candidate_rank > 0 else 0.0)
+            credits.append(min(candidate_rank / required_rank, 1.0) if candidate_rank > 0 else UNKNOWN_LEVEL_LANGUAGE_CREDIT)
         if required_rank > 0 and candidate_rank < required_rank:
             below_required_level.append(
                 {
@@ -85,7 +86,8 @@ def match_languages(cv: StructuredCV, job: StructuredJobDescription) -> dict:
             "below_required_level": below_required_level,
             "below_required_level_display": below_required_level_display,
             "language_credits": credits,
-            "scoring_rule": "level_weighted",
+            "unknown_level_credit": UNKNOWN_LEVEL_LANGUAGE_CREDIT,
+            "scoring_rule": "presence_then_level_weighted",
         },
     }
 
