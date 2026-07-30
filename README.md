@@ -7,30 +7,39 @@ Le projet utilise NVIDIA API pour l'extraction structuree et les embeddings, Pos
 ## Deroulement
 
 ```mermaid
-flowchart LR
-    A["Fiche de poste<br/>+ CV"]:::input
-    B["Parsing<br/>PDF, DOCX, TXT, MD"]:::process
-    C["Extraction LLM NVIDIA<br/>donnees structurees"]:::ai
-    D["Normalisation<br/>competences, dates, langues"]:::process
-    E["Chunking CV<br/>+ embeddings NVIDIA"]:::ai
-    F[("PostgreSQL<br/>pgvector")]:::db
-    G["Retrieval<br/>preuves textuelles"]:::process
-    H["Matching metier<br/>competences, experience, langues"]:::process
-    I["Scoring explicable<br/>forces, faiblesses, manquants"]:::score
-    J["Classement<br/>candidats ordonnes"]:::score
-    K["Interface React<br/>resultats et details"]:::output
+flowchart TB
+    A["Fiche de poste<br/>et CV candidats"]:::input
+    B["Parsing des documents<br/>PDF, DOCX, TXT, MD"]:::process
+    C["Extraction structuree<br/>LLM NVIDIA"]:::ai
+    D["Normalisation<br/>competences, dates, langues, formations"]:::process
+    E["Segmentation des CV<br/>chunks exploitables"]:::process
+    F["Embeddings NVIDIA<br/>passages CV + requete poste"]:::ai
+    G[("PostgreSQL + pgvector<br/>stockage et similarite vectorielle")]:::db
+    H["Retrieval des preuves<br/>passages pertinents du CV"]:::process
+    I["Matching metier<br/>competences, experience, langues, responsabilites"]:::process
+    J["Scoring explicable<br/>forces, faiblesses, manquants"]:::score
+    K["Classement final<br/>candidats ordonnes"]:::score
+    L["Interface React<br/>resultats, preuves et details"]:::output
 
-    A --> B --> C --> D
-    D --> E --> F --> G --> H
-    D --> H
-    H --> I --> J --> K
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+    D --> I
+    I --> J
+    J --> K
+    K --> L
 
-    classDef input fill:#eef6ff,stroke:#2563eb,color:#111827,stroke-width:1px;
-    classDef process fill:#f8fafc,stroke:#64748b,color:#111827,stroke-width:1px;
-    classDef ai fill:#fef3c7,stroke:#d97706,color:#111827,stroke-width:1px;
-    classDef db fill:#ecfdf5,stroke:#059669,color:#111827,stroke-width:1px;
-    classDef score fill:#f3e8ff,stroke:#7c3aed,color:#111827,stroke-width:1px;
-    classDef output fill:#fee2e2,stroke:#dc2626,color:#111827,stroke-width:1px;
+    classDef input fill:#eef6ff,stroke:#2563eb,color:#111827,stroke-width:2px;
+    classDef process fill:#f8fafc,stroke:#64748b,color:#111827,stroke-width:2px;
+    classDef ai fill:#fef3c7,stroke:#d97706,color:#111827,stroke-width:2px;
+    classDef db fill:#ecfdf5,stroke:#059669,color:#111827,stroke-width:2px;
+    classDef score fill:#f3e8ff,stroke:#7c3aed,color:#111827,stroke-width:2px;
+    classDef output fill:#fee2e2,stroke:#dc2626,color:#111827,stroke-width:2px;
 ```
 
 ## Objectif
