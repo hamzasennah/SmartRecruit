@@ -609,6 +609,48 @@ def test_cv_extractor_does_not_count_internships_as_professional_experience() ->
     assert [experience.job_title for experience in cv.experiences] == ["Developpeur Data"]
 
 
+def test_cv_extractor_counts_current_depuis_role_and_filters_stage_dates() -> None:
+    text = """
+    OAKKI Sounia
+    Experiences professionnelles
+    Data Analyst (Depuis 22/04/2024)
+    Dieze Rabat - Maroc
+    Analyse et visualisation avec Power BI, Microsoft Excel et PostgreSQL.
+    Stage | Data Analyst (De 27/06/2022 a 26/12/2022)
+    AXA Services Maroc Technopolis
+    Creation de rapports Power BI et Excel.
+    """
+    document = DocumentText(filename="oakki.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "OAKKI Sounia",
+        "experiences": [
+            {
+                "job_title": "Data Analyst (Depuis 22/04/2024)",
+                "company": "Dieze Rabat",
+                "start_date": "22/04/2024",
+                "end_date": None,
+                "missions": ["Analyse et visualisation avec Power BI, Microsoft Excel et PostgreSQL."],
+                "skills_used": ["Power BI", "Excel", "PostgreSQL"],
+            },
+            {
+                "job_title": "Data Analyst",
+                "company": "AXA Services Maroc Technopolis",
+                "start_date": "27/06/2022",
+                "end_date": "26/12/2022",
+                "missions": ["Creation de rapports Power BI et Excel."],
+                "skills_used": ["Power BI", "Excel"],
+            },
+        ],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert [experience.company for experience in cv.experiences] == ["Dieze Rabat"]
+    assert cv.experiences[0].job_title == "Data Analyst"
+    assert cv.experiences[0].duration_months is not None
+    assert cv.experiences[0].duration.end_precision == "present"
+
+
 def test_cv_extractor_keeps_explicit_bilingual_soft_skills_from_raw_text() -> None:
     text = """
     Qualites

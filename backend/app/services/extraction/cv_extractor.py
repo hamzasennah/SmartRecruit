@@ -22,6 +22,7 @@ from app.services.extraction.coercion import (
 from app.services.extraction.output_validator import parse_json_payload, validate_model
 from app.services.extraction.prompts import CV_EXTRACTION_PROMPT
 from app.services.normalization.education_normalizer import normalize_education_level
+from app.services.normalization.date_normalizer import has_current_start_marker
 from app.services.normalization.language_normalizer import language_rank, normalize_language, normalize_language_level
 from app.services.normalization.skill_normalizer import aliases_for_skill, normalize_skill_list
 from app.services.normalization.text_normalizer import normalize_text
@@ -64,6 +65,7 @@ RAW_TEXT_SOFT_SKILL_HINTS = _rule_tuple_map("raw_text_soft_skill_hints")
 CANDIDATE_ROLE_PATTERN = _role_pattern(_rule_list("candidate_roles"))
 CANDIDATE_NAME_REJECT_TERMS = set(_rule_list("candidate_name_reject_terms"))
 AZURE_NON_DATA_CONTEXTS = set(_rule_list("azure_non_data_contexts"))
+INTERNSHIP_MARKER_RE = re.compile(r"\b(stage|stagiaire|internship|intern|pfe|alternance)\b", flags=re.IGNORECASE)
 
 
 class CVExtractor:
@@ -81,16 +83,7 @@ class CVExtractor:
         cv.skills.technical = normalize_skill_list(cv.skills.technical)
         cv.skills.tools = normalize_skill_list(cv.skills.tools)
         cv.skills.soft = normalize_skill_list(cv.skills.soft)
-        for experience in cv.experiences:
-            experience.job_title = _extract_role_title(experience.job_title or "")
-            # Company recovery is heuristic and intentionally conservative; it
-            # uses known companies or "chez/at" patterns rather than inventing.
-            experience.company = experience.company or _extract_company(
-                " ".join([experience.job_title or "", " ".join(experience.missions)]),
-                " ".join(experience.missions),
-            )
-            experience.skills_used = normalize_skill_list(experience.skills_used)
-        cv.experiences = _filter_professional_experiences(cv.experiences)
+        cv.experiences = _prepare_professional_experiences(cv.experiences, document.text)
         # Duration enrichment is derived from extracted dates/durations so the
         # LLM is not trusted to compute experience months directly.
         cv.experiences = enrich_experience_durations(cv.experiences)
@@ -420,12 +413,73 @@ def _contains_azure_skill_context(normalized_text: str, alias: str) -> bool:
     return False
 
 
-def _filter_professional_experiences(experiences: list[Experience]) -> list[Experience]:
-    return [
-        experience
-        for experience in experiences
-        if _is_professional_experience_title(experience.job_title or "")
-    ]
+def _prepare_professional_experiences(experiences: list[Experience], raw_text: str) -> list[Experience]:
+    prepared: list[Experience] = []
+    for experience in experiences:
+        raw_title = experience.job_title or ""
+        raw_duration = experience.declared_duration or ""
+        raw_context = " ".join([raw_title, raw_duration, " ".join(experience.missions)])
+        if _is_internship_experience(experience, raw_context, raw_text):
+            continue
+        if _has_current_experience_marker(experience, raw_context, raw_text):
+            experience.end_date = "Present"
+        experience.job_title = _extract_role_title(raw_title)
+        if not _is_professional_experience_title(experience.job_title or ""):
+            continue
+        # Company recovery is heuristic and intentionally conservative; it
+        # uses known companies or "chez/at" patterns rather than inventing.
+        experience.company = experience.company or _extract_company(
+            " ".join([experience.job_title or "", " ".join(experience.missions)]),
+            " ".join(experience.missions),
+        )
+        experience.skills_used = normalize_skill_list(experience.skills_used)
+        prepared.append(experience)
+    return prepared
+
+
+def _is_internship_experience(experience: Experience, raw_context: str, raw_text: str) -> bool:
+    if _contains_internship_marker(raw_context):
+        return True
+    date_window = _experience_date_window(experience, raw_text)
+    return _contains_internship_marker(date_window)
+
+
+def _contains_internship_marker(value: str) -> bool:
+    return bool(INTERNSHIP_MARKER_RE.search(normalize_text(value)))
+
+
+def _has_current_experience_marker(experience: Experience, raw_context: str, raw_text: str) -> bool:
+    if experience.end_date:
+        return False
+    if has_current_start_marker(experience.start_date) or has_current_start_marker(raw_context):
+        return True
+    return _raw_start_date_has_current_marker(raw_text, experience.start_date)
+
+
+def _raw_start_date_has_current_marker(raw_text: str, start_date: str | None) -> bool:
+    if not start_date:
+        return False
+    normalized_text = normalize_text(raw_text)
+    normalized_start = normalize_text(start_date)
+    if not normalized_start:
+        return False
+    start_index = normalized_text.find(normalized_start)
+    if start_index < 0:
+        return False
+    before = normalized_text[max(0, start_index - 35):start_index]
+    return bool(re.search(r"\b(depuis|since|a partir de|a compter de)\b", before))
+
+
+def _experience_date_window(experience: Experience, raw_text: str) -> str:
+    normalized_text = normalize_text(raw_text)
+    for value in (experience.start_date, experience.end_date):
+        normalized_value = normalize_text(value)
+        if not normalized_value:
+            continue
+        index = normalized_text.find(normalized_value)
+        if index >= 0:
+            return normalized_text[max(0, index - 100): index + len(normalized_value) + 45]
+    return ""
 
 
 def _clean_experience_title(value: str) -> str:
