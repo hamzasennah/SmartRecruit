@@ -6,15 +6,31 @@ Le projet utilise NVIDIA API pour l'extraction structuree et les embeddings, Pos
 
 ## Deroulement
 
-```text
-Fiche de poste + CV
-        -> parsing des documents
-        -> extraction structuree par LLM
-        -> normalisation des donnees
-        -> chunking + embeddings
-        -> recherche pgvector des preuves
-        -> matching + scoring
-        -> classement et affichage
+```mermaid
+flowchart LR
+    A["Fiche de poste<br/>+ CV"]:::input
+    B["Parsing<br/>PDF, DOCX, TXT, MD"]:::process
+    C["Extraction LLM NVIDIA<br/>donnees structurees"]:::ai
+    D["Normalisation<br/>competences, dates, langues"]:::process
+    E["Chunking CV<br/>+ embeddings NVIDIA"]:::ai
+    F[("PostgreSQL<br/>pgvector")]:::db
+    G["Retrieval<br/>preuves textuelles"]:::process
+    H["Matching metier<br/>competences, experience, langues"]:::process
+    I["Scoring explicable<br/>forces, faiblesses, manquants"]:::score
+    J["Classement<br/>candidats ordonnes"]:::score
+    K["Interface React<br/>resultats et details"]:::output
+
+    A --> B --> C --> D
+    D --> E --> F --> G --> H
+    D --> H
+    H --> I --> J --> K
+
+    classDef input fill:#eef6ff,stroke:#2563eb,color:#111827,stroke-width:1px;
+    classDef process fill:#f8fafc,stroke:#64748b,color:#111827,stroke-width:1px;
+    classDef ai fill:#fef3c7,stroke:#d97706,color:#111827,stroke-width:1px;
+    classDef db fill:#ecfdf5,stroke:#059669,color:#111827,stroke-width:1px;
+    classDef score fill:#f3e8ff,stroke:#7c3aed,color:#111827,stroke-width:1px;
+    classDef output fill:#fee2e2,stroke:#dc2626,color:#111827,stroke-width:1px;
 ```
 
 ## Objectif
