@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from app.schemas.experience import ExperienceDuration
+from app.schemas.experience import ExperienceDuration, ExperienceTotals
 
 
 class SkillSet(BaseModel):
@@ -45,9 +45,13 @@ class Project(BaseModel):
 
 class StructuredCV(BaseModel):
     candidate_name: str | None = None
+    declared_total_experience: str | None = None
     job_titles: list[str] = Field(default_factory=list)
     skills: SkillSet = Field(default_factory=SkillSet)
     experiences: list[Experience] = Field(default_factory=list)
+    total_experience_months: int = 0
+    total_experience_years: float = 0.0
+    experience_totals: ExperienceTotals = Field(default_factory=ExperienceTotals)
     education: list[Education] = Field(default_factory=list)
     languages: list[Language] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)
