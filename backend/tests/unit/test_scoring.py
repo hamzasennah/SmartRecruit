@@ -67,7 +67,7 @@ def test_skill_missing_lists_keep_mandatory_and_preferred_separated() -> None:
     assert technical.details["preferred_bonus_weight"] == 0.1
 
 
-def test_irrelevant_experience_is_not_counted_as_relevant_months() -> None:
+def test_experience_requirement_uses_total_reliable_months_not_role_relevance() -> None:
     cv = StructuredCV(
         candidate_name="Candidat JavaScript",
         skills=SkillSet(technical=["javascript", "react"]),
@@ -96,10 +96,13 @@ def test_irrelevant_experience_is_not_counted_as_relevant_months() -> None:
     result = match_experience(cv, job)
 
     assert result["applicable"] is True
-    assert result["score"] == 0.0
+    assert result["score"] == 100.0
     assert result["details"]["total_experience_months"] == 48
-    assert result["details"]["relevant_experience_months"] == 0
-    assert result["missing"] == ["24 mois pertinents manquants"]
+    assert result["matched"] == ["48 mois d'experience"]
+    assert result["missing"] == []
+    assert result["details"]["experience_counting_policy"] == (
+        "Le minimum d'experience est compare au total fiable extrait du CV."
+    )
 
 
 def test_responsibilities_require_specific_cv_evidence_not_single_keyword_overlap() -> None:
@@ -329,8 +332,41 @@ def test_experience_matching_adds_dated_periods_and_explicit_durations() -> None
     result = match_experience(cv, job)
 
     assert result["details"]["total_experience_months"] == 24
-    assert result["details"]["relevant_experience_months"] == 24
+    assert result["matched"] == ["24 mois d'experience"]
     assert result["score"] == 100.0
+
+
+def test_experience_matching_uses_declared_total_when_no_itemized_experience_exists() -> None:
+    cv = StructuredCV(
+        candidate_name="Candidat Senior",
+        declared_total_experience="4 ans d'experience",
+    )
+    job = StructuredJobDescription(
+        experience_requirements=ExperienceRequirement(minimum_months=36),
+    )
+
+    result = match_experience(cv, job)
+
+    assert result["details"]["total_experience_months"] == 48
+    assert result["details"]["experience_calculation_source"] == "declared_total_experience"
+    assert result["score"] == 100.0
+
+
+def test_experience_matching_does_not_copy_stale_top_level_total() -> None:
+    cv = StructuredCV(
+        candidate_name="Candidat",
+        total_experience_months=57,
+        total_experience_years=4.75,
+    )
+    job = StructuredJobDescription(
+        experience_requirements=ExperienceRequirement(minimum_months=12),
+    )
+
+    result = match_experience(cv, job)
+
+    assert result["details"]["total_experience_months"] is None
+    assert result["details"]["experience_calculation_status"] == "not_available"
+    assert result["score"] == 0.0
 
 
 def test_data_analyst_experience_with_full_date_and_mission_evidence_is_relevant() -> None:
@@ -360,7 +396,141 @@ def test_data_analyst_experience_with_full_date_and_mission_evidence_is_relevant
     result = match_experience(cv, job)
 
     assert result["details"]["total_experience_months"] == 13
-    assert result["details"]["relevant_experience_months"] == 13
+    assert result["score"] == 100.0
+
+
+def test_experience_matching_counts_total_months_when_title_is_job_contextual() -> None:
+    cv = StructuredCV(
+        skills=SkillSet(technical=["power bi", "excel"]),
+        experiences=enrich_experience_durations(
+            [
+                Experience(
+                    job_title="BI Developer",
+                    start_date="janvier 2024",
+                    end_date="decembre 2024",
+                )
+            ]
+        ),
+    )
+    job = StructuredJobDescription(
+        job_title="Data Analyst packaging tool",
+        required_skills=RequiredSkills(mandatory=["power bi", "excel", "snowflake"]),
+        experience_requirements=ExperienceRequirement(minimum_months=12),
+    )
+
+    result = match_experience(cv, job)
+
+    assert result["details"]["total_experience_months"] == 12
+    assert result["score"] == 100.0
+
+
+def test_experience_matching_counts_total_months_even_when_role_is_different() -> None:
+    cv = StructuredCV(
+        skills=SkillSet(technical=["power bi", "excel"]),
+        experiences=enrich_experience_durations(
+            [
+                Experience(
+                    job_title="Support IT",
+                    start_date="janvier 2024",
+                    end_date="decembre 2024",
+                )
+            ]
+        ),
+    )
+    job = StructuredJobDescription(
+        job_title="Data Analyst packaging tool",
+        required_skills=RequiredSkills(mandatory=["power bi", "excel", "snowflake"]),
+        experience_requirements=ExperienceRequirement(minimum_months=12),
+    )
+
+    result = match_experience(cv, job)
+
+    assert result["details"]["total_experience_months"] == 12
+    assert result["score"] == 100.0
+
+
+def test_experience_matching_uses_union_total_in_mixed_cv() -> None:
+    cv = StructuredCV(
+        skills=SkillSet(technical=["power bi", "excel"]),
+        experiences=enrich_experience_durations(
+            [
+                Experience(
+                    job_title="BI Developer",
+                    start_date="janvier 2024",
+                    end_date="decembre 2024",
+                ),
+                Experience(
+                    job_title="Support IT",
+                    start_date="janvier 2023",
+                    end_date="decembre 2023",
+                ),
+            ]
+        ),
+    )
+    job = StructuredJobDescription(
+        job_title="Data Analyst packaging tool",
+        required_skills=RequiredSkills(mandatory=["power bi", "excel", "snowflake"]),
+        experience_requirements=ExperienceRequirement(minimum_months=18),
+    )
+
+    result = match_experience(cv, job)
+
+    assert result["details"]["total_experience_months"] == 24
+    assert result["score"] == 100.0
+
+
+def test_present_period_is_included_in_relevant_experience_union() -> None:
+    cv = StructuredCV(
+        skills=SkillSet(technical=["power bi", "excel"]),
+        experiences=enrich_experience_durations(
+            [
+                Experience(job_title="BI Developer", start_date="04/2025 \u2013 present"),
+                Experience(job_title="BI Developer", start_date="11/2021 \u2013 02/2025"),
+                Experience(job_title="BI Developer", start_date="06/2024 \u2013 11/2024"),
+            ],
+            today=date(2026, 8, 2),
+        ),
+    )
+    job = StructuredJobDescription(
+        job_title="Data Analyst packaging tool",
+        required_skills=RequiredSkills(mandatory=["power bi", "excel", "snowflake"]),
+        experience_requirements=ExperienceRequirement(minimum_months=12),
+    )
+
+    result = match_experience(cv, job)
+
+    assert result["details"]["total_experience_months"] == 57
+    assert result["score"] == 100.0
+
+
+def test_responsibility_evidence_in_experience_mission_counts_as_relevant() -> None:
+    cv = StructuredCV(
+        experiences=enrich_experience_durations(
+            [
+                Experience(
+                    job_title="Experience",
+                    start_date="04/2025 - present",
+                    missions=[
+                        "Creation et amelioration des tableaux de bord et KPI. Pilotage du workstream BI/Data.",
+                    ],
+                )
+            ],
+            today=date(2026, 8, 2),
+        ),
+    )
+    job = StructuredJobDescription(
+        job_title="Data Analyst packaging tool",
+        required_skills=RequiredSkills(mandatory=["excel", "power bi", "snowflake"]),
+        experience_requirements=ExperienceRequirement(minimum_months=12),
+        responsibilities=[
+            "Creer et ameliorer les tableaux de bord et KPI.",
+            "Piloter le workstream BI/Data.",
+        ],
+    )
+
+    result = match_experience(cv, job)
+
+    assert result["details"]["total_experience_months"] == 17
     assert result["score"] == 100.0
 
 
