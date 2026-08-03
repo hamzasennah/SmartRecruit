@@ -6,6 +6,13 @@ Thumbs.db
 *.env.*
 !.env.example
 
+# Notes et sorties de diagnostic locales
+AUDIT_*.md
+CORRECTION_*.md
+DIAGNOSTIC_*.md
+VALIDATION_*.md
+tmp/
+
 backend/.env
 backend/.venv/
 backend/venv/
