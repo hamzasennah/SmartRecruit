@@ -54,6 +54,8 @@ PRESENT_WORDS = {
     "present",
     "aujourdhui",
     "a ce jour",
+    "actuel",
+    "actuelle",
     "actuellement",
     "current",
     "currently",
@@ -68,6 +70,15 @@ PRESENT_WORDS = {
 
 DATE_PREFIX_PATTERN = r"^(?:depuis|since|from|a partir de|a compter de|du|de|le)\s+"
 CURRENT_START_PATTERN = r"^(?:depuis|since|a partir de|a compter de)\b"
+MONTH_NAME_PATTERN = "|".join(re.escape(month) for month in sorted(MONTHS, key=len, reverse=True))
+DATE_FRAGMENT_PATTERNS = (
+    r"\b(19\d{2}|20\d{2})[/.-](0?[1-9]|1[0-2])[/.-](0?[1-9]|[12]\d|3[01])\b",
+    r"\b(0?[1-9]|[12]\d|3[01])[/.-](0?[1-9]|[12]\d|3[01])[/.-](19\d{2}|20\d{2})\b",
+    r"\b(0?[1-9]|1[0-2])[/.-](19\d{2}|20\d{2})\b",
+    r"\b(19\d{2}|20\d{2})[/.-](0?[1-9]|1[0-2])\b",
+    rf"\b(?:0?[1-9]|[12]\d|3[01])?\s*(?:{MONTH_NAME_PATTERN})\s+(?:19\d{{2}}|20\d{{2}})\b",
+    r"\b(19\d{2}|20\d{2})\b",
+)
 
 
 def parse_month_year(value: str | None, today: date | None = None) -> tuple[date | None, str]:
@@ -108,6 +119,10 @@ def parse_month_year(value: str | None, today: date | None = None) -> tuple[date
     if match:
         return date(int(match.group(1)), 7, 1), "year"
 
+    fragment = extract_date_fragment(normalized)
+    if fragment and fragment != normalized:
+        return parse_month_year(fragment, today=today)
+
     return None, "unknown"
 
 
@@ -134,6 +149,19 @@ def normalize_date_text(value: str) -> str:
     value = re.sub(r"[,;:]", " ", value)
     value = re.sub(r"\s+", " ", value)
     return value.strip()
+
+
+def extract_date_fragment(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = normalize_date_text(value)
+    if is_present_value(normalized):
+        return normalized
+    for pattern in DATE_FRAGMENT_PATTERNS:
+        match = re.search(pattern, normalized)
+        if match:
+            return match.group(0).strip()
+    return None
 
 
 def _safe_day_month_date(year: int, month: int, day: int) -> date | None:
