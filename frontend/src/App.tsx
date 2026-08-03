@@ -131,17 +131,6 @@ const DETAIL_LABELS: Record<string, string> = {
   partial_preferred: "Competences souhaitees partielles",
 };
 
-const LANGUAGE_RANK_LABELS: Record<number, string> = {
-  0: "non precise",
-  1: "A1",
-  2: "A2 / basique",
-  3: "B1 / intermediaire",
-  4: "professionnel",
-  5: "courant",
-  6: "bilingue",
-  7: "natif",
-};
-
 const PIPELINE_STEPS: PipelineStep[] = [
   // These progress targets mirror backend phases at a product level only; they
   // are UI milestones, not exact timing measurements from the worker.
@@ -652,6 +641,7 @@ function CategoryBlock({ category }: { category: CategoryScore }) {
     category.name === "responsibilities"
       ? formatPartialResponsibilities(category.details?.partial, category.details?.responsibility_scores)
       : [];
+  const showAuditDetails = category.name !== "languages" && Object.keys(category.details || {}).length > 0;
 
   return (
     <section className="category-block">
@@ -672,6 +662,7 @@ function CategoryBlock({ category }: { category: CategoryScore }) {
           <TextList values={category.missing} empty="Aucun" />
         </div>
       </div>
+      {category.name === "experience" && <ExperienceSummary details={category.details} />}
       {partialSkills.length > 0 && (
         <div className="partial-skills">
           <h4>Correspondances partielles</h4>
@@ -685,7 +676,7 @@ function CategoryBlock({ category }: { category: CategoryScore }) {
         </div>
       )}
       {category.name === "languages" && <LanguageLevelSummary details={category.details} />}
-      {Object.keys(category.details || {}).length > 0 && (
+      {showAuditDetails && (
         <details className="detail-json">
           <summary>Details d'audit</summary>
           <dl>
@@ -702,77 +693,53 @@ function CategoryBlock({ category }: { category: CategoryScore }) {
   );
 }
 
-function LanguageLevelSummary({ details }: { details: Record<string, unknown> }) {
-  const candidateLevels = readLevelLabels(details.candidate_level_labels, details.candidate_levels);
-  const requiredLevels = readLevelLabels(details.required_level_labels, details.required_levels);
-  const sources = readStringRecord(details.level_sources);
-  const languages = Array.from(new Set([...Object.keys(candidateLevels), ...Object.keys(requiredLevels)]));
-  if (languages.length === 0) {
+function ExperienceSummary({ details }: { details: Record<string, unknown> }) {
+  const total = readDetailNumber(details, "total_experience_months");
+  const required = readDetailNumber(details, "required_experience_months");
+  if (total === null && required === null) {
     return null;
   }
-  const below = readBelowRequiredLanguageRows(details.below_required_level_display);
   return (
-    <div className="language-levels">
-      <h4>Niveaux de langue</h4>
-      <ul>
-        {languages.map((language) => (
-          <li key={language}>
-            <strong>{language}</strong>
-            <span>detecte : {candidateLevels[language] || "non precise"}</span>
-            <span>requis : {requiredLevels[language] || "non precise"}</span>
-            <span>origine : {sources[language] || "mention du CV"}</span>
-          </li>
-        ))}
-      </ul>
-      {below.length > 0 && (
-        <div className="language-warning">
-          <h5>Sous le niveau requis</h5>
-          <ul>
-            {below.map((row) => (
-              <li key={row.language}>
-                {row.language}: {row.candidateLevel} detecte, {row.requiredLevel} requis ({row.source})
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+    <div className="experience-summary">
+      <h4>Lecture experience</h4>
+      <div className="experience-metrics">
+        <span>
+          Total audite
+          <strong>{formatMonths(total)}</strong>
+        </span>
+        <span>
+          Minimum requis
+          <strong>{formatMonths(required)}</strong>
+        </span>
+      </div>
     </div>
   );
 }
 
-function readLevelLabels(labels: unknown, ranks: unknown): Record<string, string> {
-  const labelled = readStringRecord(labels);
-  if (Object.keys(labelled).length > 0) {
-    return labelled;
+function LanguageLevelSummary({ details }: { details: Record<string, unknown> }) {
+  const languages = readDetectedLanguages(details);
+  if (languages.length === 0) {
+    return null;
   }
-  const ranked = readNumberRecord(ranks);
-  return Object.fromEntries(Object.entries(ranked).map(([language, rank]) => [language, formatLanguageRank(rank)]));
+  return (
+    <div className="language-levels">
+      <h4>Langues detectees</h4>
+      <ul>
+        {languages.map((language) => (
+          <li key={language}>
+            <strong>{language}</strong>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
-function readBelowRequiredLanguageRows(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const record = item as Record<string, unknown>;
-      const language = String(record.language || "").trim();
-      if (!language) {
-        return null;
-      }
-      return {
-        language,
-        candidateLevel: String(record.candidate_level || "non precise"),
-        requiredLevel: String(record.required_level || "non precise"),
-        source: String(record.source || "mention du CV"),
-      };
-    })
-    .filter((item): item is { language: string; candidateLevel: string; requiredLevel: string; source: string } =>
-      Boolean(item),
-    );
+function readDetectedLanguages(details: Record<string, unknown>): string[] {
+  const labels = readStringRecord(details.candidate_level_labels);
+  const ranks = readNumberRecord(details.candidate_levels);
+  const languages = new Set([...Object.keys(labels), ...Object.keys(ranks)]);
+  return Array.from(languages).sort((left, right) => left.localeCompare(right));
 }
 
 function formatPartialResponsibilities(partial: unknown, responsibilityScores: unknown): string[] {
@@ -860,10 +827,6 @@ function formatEvidenceSource(source: string) {
   return CATEGORY_LABELS[source] || source.replace(/_/g, " ");
 }
 
-function formatLanguageRank(rank: number) {
-  return LANGUAGE_RANK_LABELS[rank] || `niveau ${rank}`;
-}
-
 function readStringRecord(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
@@ -882,6 +845,18 @@ function readNumberRecord(value: unknown): Record<string, number> {
       .map(([key, item]) => [key, Number(item)] as const)
       .filter(([, item]) => Number.isFinite(item)),
   );
+}
+
+function readDetailNumber(details: Record<string, unknown>, key: string): number | null {
+  const value = Number(details?.[key]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function formatMonths(value: number | null) {
+  if (value === null) {
+    return "Non calcule";
+  }
+  return `${value} mois`;
 }
 
 function formatDetail(value: unknown) {
