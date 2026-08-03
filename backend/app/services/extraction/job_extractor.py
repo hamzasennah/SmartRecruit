@@ -352,12 +352,40 @@ def _add_language_requirements(job: StructuredJobDescription, languages: list[st
         languages.append("french")
     if "english" in normalized_text or "anglais" in normalized_text:
         languages.append("english")
-    existing = {normalize_language(language.language) for language in job.language_requirements}
+    inferred_levels = _infer_language_requirement_levels(normalized_text)
+    existing = {normalize_language(language.language): language for language in job.language_requirements}
+    for normalized, requirement in existing.items():
+        if normalized and not requirement.minimum_level and normalized in inferred_levels:
+            requirement.minimum_level = inferred_levels[normalized]
     for language in languages:
         normalized = normalize_language(language)
         if normalized and normalized not in existing:
-            job.language_requirements.append(LanguageRequirement(language=normalized, minimum_level=None))
-            existing.add(normalized)
+            job.language_requirements.append(
+                LanguageRequirement(language=normalized, minimum_level=inferred_levels.get(normalized))
+            )
+            existing[normalized] = job.language_requirements[-1]
+
+
+def _infer_language_requirement_levels(normalized_text: str) -> dict[str, str]:
+    tokens = normalized_text.split()
+    level_terms = {normalize_language_level(term) or term for term in LANGUAGE_LEVEL_TERMS}
+    levels_by_language: dict[str, tuple[str, int]] = {}
+    for index, token in enumerate(tokens):
+        language = normalize_language(LANGUAGE_TOKEN_MAP.get(token, token))
+        if language not in {"francais", "anglais", "arabe"}:
+            continue
+        candidates: list[tuple[int, str]] = []
+        for level_index in range(max(0, index - 4), min(len(tokens), index + 5)):
+            level = normalize_language_level(tokens[level_index])
+            if level and level in level_terms:
+                candidates.append((abs(index - level_index), level))
+        if not candidates:
+            continue
+        distance, level = sorted(candidates, key=lambda item: (item[0], item[1]))[0]
+        current = levels_by_language.get(language)
+        if current is None or distance < current[1]:
+            levels_by_language[language] = (level, distance)
+    return {language: level for language, (level, _) in levels_by_language.items()}
 
 
 def _infer_job_title(text: str) -> str | None:

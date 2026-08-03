@@ -13,6 +13,8 @@ REGLES D'EXTRACTION:
 - Ne compte pas les stages, PFE, internships ou periodes stagiaire comme experiences professionnelles.
 - Ne transforme pas une responsabilite ou une mission en competence si l'outil n'est pas explicitement cite.
 - Preserve les dates telles qu'elles sont ecrites. Si une date est absente ou incertaine, utilise null.
+- Si le CV declare explicitement une duree totale d'experience, recopie cette mention dans declared_total_experience sans la calculer.
+- Pour une experience sans dates mais avec une duree explicite, recopie cette duree dans declared_duration sans conversion.
 - Si le texte est en francais, garde les noms, intitules, diplomes et entreprises tels qu'ils sont ecrits.
 - Garde les competences atomiques: "Python", "Power BI", "PostgreSQL" plutot que des phrases longues.
 - Si un terme est explicitement ecrit au pluriel, garde sa forme atomique canonique: "KPIs" -> "KPI", "dashboards" -> "dashboard".
@@ -38,6 +40,7 @@ Selectionne les informations utiles au recrutement sans recopier tout le CV:
 SCHEMA JSON OBLIGATOIRE:
 {{
   "candidate_name": null,
+  "declared_total_experience": null,
   "job_titles": [],
   "skills": {{"technical": [], "soft": [], "tools": []}},
   "experiences": [
@@ -46,6 +49,7 @@ SCHEMA JSON OBLIGATOIRE:
       "company": null,
       "start_date": null,
       "end_date": null,
+      "declared_duration": null,
       "missions": [],
       "skills_used": []
     }}

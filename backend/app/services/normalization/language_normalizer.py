@@ -9,8 +9,11 @@ from app.services.normalization.text_normalizer import normalize_text
 LANGUAGE_ALIASES = {"french": "francais", "francais": "francais", "english": "anglais", "anglais": "anglais", "arabic": "arabe", "arabe": "arabe"}
 LEVEL_ALIASES = {
     "anglais professionnel": "professional",
+    "bilingual": "bilingue",
     "capacite professionnelle complete": "professional",
     "courante": "courant",
+    "langue maternelle": "native",
+    "langue natale": "native",
     "maternelle": "native",
     "maternel": "native",
     "niveau professionnel": "professional",
