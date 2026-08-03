@@ -1,7 +1,10 @@
+from datetime import date
+
 import pytest
 from app.schemas.cv import Experience, SkillSet, StructuredCV
 from app.schemas.document import DocumentText
 from app.schemas.job import RequiredSkills, StructuredJobDescription
+from app.services.experience import duration_calculator
 from app.services.extraction.cv_extractor import CVExtractor, enrich_cv_with_job_skill_evidence
 from app.services.extraction.job_extractor import JobExtractor
 from app.services.scoring.scoring_engine import ScoringEngine
@@ -10,8 +13,12 @@ from app.services.scoring.scoring_engine import ScoringEngine
 class StaticLLM:
     def __init__(self, payload: dict) -> None:
         self.payload = payload
+        self.last_prompt: str | None = None
+        self.last_output: dict | None = None
 
     def generate_json(self, prompt: str) -> dict:
+        self.last_prompt = prompt
+        self.last_output = self.payload
         return self.payload
 
 
@@ -83,6 +90,7 @@ def test_job_extractor_moves_languages_out_of_technical_skills_and_infers_title(
     assert job.required_skills.preferred == ["foundry", "spm"]
     assert job.required_skills.soft == ["autonomy", "leadership", "self driven"]
     assert [language.language for language in job.language_requirements] == ["francais", "anglais"]
+    assert [language.minimum_level for language in job.language_requirements] == ["fluent", "fluent"]
 
 
 def test_job_extractor_never_keeps_language_level_phrases_as_soft_skills() -> None:
@@ -106,6 +114,7 @@ def test_job_extractor_never_keeps_language_level_phrases_as_soft_skills() -> No
 
     assert job.required_skills.soft == ["autonomy", "leadership"]
     assert [language.language for language in job.language_requirements] == ["francais", "anglais"]
+    assert [language.minimum_level for language in job.language_requirements] == ["fluent", "fluent"]
 
 
 def test_job_extractor_removes_model_skills_not_proven_in_job_text() -> None:
@@ -451,6 +460,42 @@ def test_cv_extractor_does_not_turn_education_or_mission_fragments_into_experien
     assert all("master" not in (experience.job_title or "").lower() for experience in cv.experiences)
 
 
+def test_cv_extractor_filters_education_records_misclassified_as_experiences() -> None:
+    text = """
+    Education
+    2020 - 2023
+    Licence Fondamentale en Genie de Telecommunication
+    Faculte des Sciences et Techniques
+    2019 - 2020
+    Baccalaureat en sciences Mathematiques A
+    Lycee Mohammed 5
+    """
+    document = DocumentText(filename="education-as-experience.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "experiences": [
+            {
+                "job_title": "Ingenieure en telecommunication",
+                "company": "Faculte des Sciences et Techniques",
+                "start_date": "2020",
+                "end_date": "2023",
+            },
+            {
+                "job_title": "Ingenieure en sciences Mathematiques",
+                "company": "Lycee Mohammed 5",
+                "start_date": "2019",
+                "end_date": "2020",
+            },
+        ],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.experiences == []
+    assert cv.total_experience_months == 0
+    assert all(not entry.counted_in_total for entry in cv.experience_totals.entries)
+
+
 def test_cv_extractor_filters_noisy_llm_experience_titles() -> None:
     document = DocumentText(filename="zakariaa.txt", text="CV Zakariaa", char_count=11)
     llm_payload = {
@@ -626,6 +671,452 @@ def test_cv_extractor_does_not_count_internships_as_professional_experience() ->
     assert [experience.job_title for experience in cv.experiences] == ["Developpeur Data"]
 
 
+def test_cv_extractor_keeps_explicit_stage_durations_in_total_audit_without_professional_scoring() -> None:
+    text = """
+    Experience
+    Stage d'alternance(4mois) - 2025
+    Stage (1mois) - 2024
+    Stage de fin d'etude - Departement de diffusion (3mois) - 2023
+    """
+    document = DocumentText(filename="duration-only-stages.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [
+            {"job_title": "Stage d'alternance(4mois)", "start_date": "2025"},
+            {"job_title": "Stage (1mois)", "start_date": "2024"},
+            {"job_title": "Stage de fin d'etude - Departement de diffusion (3mois)", "start_date": "2023"},
+        ],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.experiences == []
+    assert cv.total_experience_months == 8
+    assert cv.experience_totals.explicit_duration_months == 8
+    assert cv.experience_totals.explicit_duration_count == 3
+
+
+def test_cv_extractor_uses_directly_declared_total_experience_after_llm_extraction() -> None:
+    text = """
+    Candidate Data Analyst
+    Profil: 4 ans d'experience en analyse de donnees.
+    """
+    document = DocumentText(filename="direct-total.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "declared_total_experience": "4 ans d'experience",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [],
+        "education": [],
+        "languages": [],
+    }
+    llm = StaticLLM(llm_payload)
+
+    cv = CVExtractor(llm).extract(document)
+
+    assert llm.last_output == llm_payload
+    assert "declared_total_experience" in (llm.last_prompt or "")
+    assert cv.total_experience_months == 48
+    assert cv.experience_totals.calculation_source == "declared_total_experience"
+
+
+def test_cv_extractor_calculates_total_from_multiple_dated_llm_experiences() -> None:
+    text = """
+    Candidate Data Analyst
+    Experience
+    Data Analyst, 2020 a 2025
+    Consultant BI, 2026 a 2028
+    """
+    document = DocumentText(filename="dated-ranges.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [
+            {"job_title": "Data Analyst", "start_date": "De 2020 \u00e0 2025", "end_date": None},
+            {"job_title": "Consultant BI", "start_date": "De 2026 \u00e0 2028", "end_date": None},
+        ],
+        "education": [],
+        "languages": [],
+    }
+    llm = StaticLLM(llm_payload)
+
+    cv = CVExtractor(llm).extract(document)
+
+    assert llm.last_output == llm_payload
+    assert [experience.duration_months for experience in cv.experiences] == [72, 36]
+    assert cv.total_experience_months == 108
+    assert cv.experience_totals.calculation_source == "itemized_experiences"
+
+
+def test_cv_extractor_recovers_date_ranged_experiences_omitted_by_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FrozenDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return cls(2026, 8, 2)
+
+    monkeypatch.setattr(duration_calculator, "date", FrozenDate)
+    text = """
+    Candidate
+    Experience
+    Software Engineer
+    04/2025 - present
+    Data Scientist
+    11/2021 - 02/2025
+    BI Developer
+    06/2024 - 11/2024
+    Data Analyst
+    02/2024 - 06/2024
+    Data Engineer
+    06/2023 - 08/2023
+    Business Intelligence Analyst
+    04/2022 - 06/2022
+    """
+    document = DocumentText(filename="six-ranges.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [
+            {"job_title": "Software Engineer", "start_date": "04/2025", "end_date": "present"},
+            {"job_title": "Data Scientist", "start_date": "11/2021", "end_date": "02/2025"},
+        ],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert [experience.job_title for experience in cv.experiences] == [
+        "Software Engineer",
+        "Data Scientist",
+        "BI Developer",
+        "Data Analyst",
+        "Data Engineer",
+        "Business Intelligence Analyst",
+    ]
+    assert [experience.duration_months for experience in cv.experiences] == [17, 40, 6, 5, 3, 3]
+    assert cv.experience_totals.period_count == 6
+    assert len(cv.experience_totals.entries) == 6
+    assert cv.total_experience_months == 57
+
+
+def test_cv_extractor_recovers_pdf_layout_dates_separated_from_titles(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FrozenDate(date):
+        @classmethod
+        def today(cls) -> date:
+            return cls(2026, 8, 2)
+
+    monkeypatch.setattr(duration_calculator, "date", FrozenDate)
+    text = """
+    Professional Experience
+    Software Engineer, Yorsil
+    Developed front-end interface using React.js.
+    Built and maintained back-end APIs with Node.js.
+    04/2025 - present
+    internship, inettech.io
+    Development of an intelligent extraction system.
+    11/2021 - 02/2025
+    data scientist, Freelancer
+    Developed deep learning models.
+    06/2024 - 11/2024
+    PFE master internship, Wehlp Group
+    Participation in the development of an application.
+    02/2024 - 06/2024
+    Internship - Full Stack Development & Data Science, Creative Studio
+    Web application for rentals.
+    06/2023 - 08/2023
+    Bachelor's PFE internship, TC Design
+    Development of an e-commerce web application.
+    04/2022 - 06/2022
+    Education
+    Master in Data Science
+    2022 - 2024
+    """
+    document = DocumentText(filename="vertical-dates.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [
+            {"job_title": "Software Engineer", "start_date": "04/2025"},
+            {"job_title": "data scientist", "start_date": "06/2024", "end_date": "11/2024"},
+        ],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.experience_totals.period_count == 6
+    assert len(cv.experience_totals.entries) == 6
+    assert cv.total_experience_months == 57
+    assert [experience.job_title for experience in cv.experiences] == ["Software Engineer", "data scientist"]
+    assert cv.experiences[0].duration_months == 17
+
+
+def test_cv_extractor_recovers_explicit_duration_entries_omitted_by_llm() -> None:
+    text = """
+    Experience
+    Stage d'alternance(4mois) - 2025
+    Stage (1mois) - 2024
+    Stage de fin d'etude - Departement de diffusion (3mois) - 2023
+    """
+    document = DocumentText(filename="duration-only-stages.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.experiences == []
+    assert cv.total_experience_months == 8
+    assert cv.experience_totals.explicit_duration_months == 8
+    assert cv.experience_totals.explicit_duration_count == 3
+    assert len(cv.experience_totals.entries) == 3
+
+
+def test_cv_extractor_recovers_explicit_duration_entries_without_same_line_year() -> None:
+    text = """
+    Experience Professionnelle
+    2025
+    2024
+    Stage (1 mois)
+    sg2i consulting
+    Stage de fin d'etude - Departement de diffusion (3mois)
+    SOREAD 2M
+    Stage d'alternance(4mois)
+    sg2i Consulting
+    2023
+    """
+    document = DocumentText(filename="duration-only-stages-layout.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.experiences == []
+    assert cv.total_experience_months == 8
+    assert cv.experience_totals.explicit_duration_months == 8
+    assert cv.experience_totals.explicit_duration_count == 3
+
+
+def test_cv_extractor_clears_inconsistent_year_range_when_explicit_duration_wins() -> None:
+    text = """
+    Experience Professionnelle
+    Stage de fin d'etude - Departement de diffusion (3mois)
+    SOREAD 2M
+    2020 - 2023
+    Licence Fondamentale
+    """
+    document = DocumentText(filename="explicit-duration-vs-education-years.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "experiences": [
+            {
+                "job_title": "Stage de fin d'etude - Departement de diffusion (3mois)",
+                "company": "SOREAD 2M",
+                "start_date": "2020",
+                "end_date": "2023",
+                "declared_duration": "3 mois",
+            },
+        ],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.total_experience_months == 3
+    assert cv.experience_totals.entries[0].start_date_raw is None
+    assert cv.experience_totals.entries[0].end_date_raw is None
+    assert cv.experience_totals.entries[0].duration_months == 3
+
+
+def test_cv_extractor_keeps_undated_internships_in_total_audit_only() -> None:
+    text = """
+    Experience professionnelle
+    Je souhaite mettre ces connaissances en pratique a travers un stage de fin d'etudes.
+    Stage Developpeur Web, Amereo Consulting
+    Realisation d'une application web.
+    Stage PFE, Prefecture de Fes
+    Gestion et realisation d'une application Desktop.
+    """
+    document = DocumentText(filename="undated-stages.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "experiences": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.experiences == []
+    assert cv.total_experience_months == 0
+    assert [entry.job_title for entry in cv.experience_totals.entries] == [
+        "Stage Developpeur Web, Amereo Consulting",
+        "Stage PFE, Prefecture de Fes",
+    ]
+    assert all(not entry.counted_in_total for entry in cv.experience_totals.entries)
+
+
+def test_cv_extractor_filters_project_section_misclassified_as_experience() -> None:
+    text = """
+    Candidate
+    Experience
+    REALISATION DES PROJETS
+    Prediction ML avec Python et Django.
+    Analyse du baccalaureat (1997-2024) avec Power BI.
+    """
+    document = DocumentText(filename="projects-as-experience.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [
+            {
+                "job_title": "REALISATION DES PROJETS",
+                "missions": ["Analyse du baccalaureat (1997-2024) avec Power BI."],
+            },
+            {"job_title": "Analyste BI"},
+        ],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert [entry.job_title for entry in cv.experience_totals.entries] == ["Analyste BI"]
+    assert [experience.job_title for experience in cv.experiences] == ["Analyste BI"]
+
+
+def test_cv_extractor_excludes_dated_project_section_from_experience_total() -> None:
+    text = """
+    Candidate
+    Experience Professionnelle
+    Data Analyst
+    06/2023 - 08/2023
+    REALISATION DES PROJETS
+    Data Analyst dashboard Power BI
+    2020 - 2024
+    """
+    document = DocumentText(filename="dated-project-section.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert [entry.job_title for entry in cv.experience_totals.entries] == ["Data Analyst"]
+    assert cv.total_experience_months == 3
+    assert cv.experience_totals.period_count == 1
+
+
+def test_cv_extractor_excludes_explicit_project_duration_from_experience_total() -> None:
+    text = """
+    Candidate
+    Experience Professionnelle
+    Stage Data Analyst (2 mois)
+    Entreprise Data
+    Projets realises
+    Projet BI Power BI (12 mois)
+    Portfolio data (1 year)
+    """
+    document = DocumentText(filename="project-durations.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert [entry.job_title for entry in cv.experience_totals.entries] == ["Stage Data Analyst"]
+    assert cv.total_experience_months == 2
+    assert cv.experience_totals.explicit_duration_months == 2
+
+
+def test_cv_extractor_cleans_contact_prefix_from_recovered_stage_titles() -> None:
+    text = """
+    Candidate
+    06 60 73 69 58 Experience Professionnelle
+    candidate@example.com Stage d'alternance(4mois) 2025
+    Linkedin : candidate-profile Stage (1 mois) 2024
+    """
+    document = DocumentText(filename="contact-prefix-stages.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert [entry.job_title for entry in cv.experience_totals.entries] == ["Stage d'alternance", "Stage"]
+    assert cv.total_experience_months == 5
+
+
+def test_cv_extractor_keeps_stage_line_when_pdf_columns_place_it_after_project_heading() -> None:
+    text = """
+    Candidate
+    Experience Professionnelle
+    Stage (1 mois)
+    Experience
+    REALISATION DES PROJETS
+    Analyse du baccalaureat (1997-2024)
+    Stage d'alternance(4mois)
+    """
+    document = DocumentText(filename="stage-after-project-heading.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert [entry.job_title for entry in cv.experience_totals.entries] == ["Stage", "Stage d'alternance"]
+    assert cv.total_experience_months == 5
+
+
+def test_cv_extractor_filters_llm_experience_when_evidence_is_only_in_english_project_section() -> None:
+    text = """
+    Candidate
+    Projects
+    Data Analyst dashboard
+    2020 - 2024
+    """
+    document = DocumentText(filename="english-project-section.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "skills": {"technical": [], "tools": [], "soft": []},
+        "experiences": [{"job_title": "Data Analyst", "start_date": "2020", "end_date": "2024"}],
+        "education": [],
+        "languages": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.experiences == []
+    assert cv.experience_totals.entries == []
+    assert cv.total_experience_months == 0
+
+
 def test_cv_extractor_filters_internship_marker_on_line_after_date() -> None:
     text = """
     Najlae Hmimina
@@ -697,6 +1188,33 @@ def test_cv_extractor_counts_current_depuis_role_and_filters_stage_dates() -> No
     assert cv.experiences[0].duration.end_precision == "present"
 
 
+def test_cv_extractor_deduplicates_raw_stage_title_with_llm_title() -> None:
+    text = """
+    Experiences professionnelles
+    Stage | Data Science and Business Analytics (De 01/04/2022 a 01/05/2022)
+    The Sparks Foundation
+    Outils: Power BI, Tableau, Python
+    """
+    document = DocumentText(filename="stage-duplicate.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "experiences": [
+            {
+                "job_title": "Data Science and Business Analytics",
+                "company": "The Sparks Foundation",
+                "start_date": "01/04/2022",
+                "end_date": "01/05/2022",
+            },
+        ],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert cv.experience_totals.period_count == 1
+    assert len(cv.experience_totals.entries) == 1
+    assert cv.total_experience_months == 2
+
+
 def test_cv_extractor_keeps_explicit_bilingual_soft_skills_from_raw_text() -> None:
     text = """
     Qualites
@@ -740,16 +1258,18 @@ def test_cv_extractor_recovers_languages_from_raw_text_when_llm_omits_them() -> 
 
 
 def test_cv_extractor_accepts_language_level_returned_by_model() -> None:
-    document = DocumentText(filename="languages.txt", text="Langues: Francais courant", char_count=25)
+    document = DocumentText(filename="languages.txt", text="Langues: Francais courant. Arabe: Langue natale", char_count=48)
     llm_payload = {
         "candidate_name": "Candidate",
-        "languages": [{"language": "French", "level": "courant"}],
+        "languages": [{"language": "French", "level": "courant"}, {"language": "Arabic", "level": "Langue natale"}],
     }
 
     cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
 
     assert cv.languages[0].language == "francais"
     assert cv.languages[0].normalized_level == "courant"
+    assert cv.languages[1].language == "arabe"
+    assert cv.languages[1].normalized_level == "native"
 
 
 def test_cv_extractor_overrides_unknown_llm_language_level_with_raw_text_evidence() -> None:
@@ -808,6 +1328,84 @@ def test_cv_extractor_accepts_education_years_returned_as_month_year_strings() -
     assert [(education.start_year, education.end_year) for education in cv.education] == [
         (2018, 2020),
         (2017, 2018),
+    ]
+
+
+def test_cv_extractor_recovers_missing_education_and_nearby_years() -> None:
+    text = """
+    Education
+    2023 - En cours
+    CYCLE D'INGENIERIE
+    Universite Mundiapolis
+    Baccalaureat en sciences Mathematiques A
+    2019 - 2020
+    Baccalaureat
+    Lycee Mohammed 5
+    2020 - 2023
+    Licence Fondamentale en Genie de Telecommunication
+    Faculte des Sciences et Techniques
+    FORMATIONS
+    2019 - 2021
+    Master Specialise Big Data & Cloud Computing
+    Universite Ibn Tofail
+    2019
+    Baccalaureate, high school
+    Experience
+    PFE master internship
+    02/2024 - 06/2024
+    Projets
+    Analyse du baccalaureat (1997-2024) : etude exploratoire Power BI.
+    """
+    document = DocumentText(filename="education-layout.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "education": [
+            {"degree": "Licence Fondamentale en Genie de Telecommunication"},
+            {"degree": "Master Specialise Big Data & Cloud Computing"},
+            {"degree": "Baccalaureat en sciences Mathematiques A", "start_year": 2023, "end_year": 2020},
+            {"degree": "Baccalaureat"},
+            {"degree": "Baccalaureate", "start_year": 2019},
+        ],
+        "experiences": [],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    by_degree = {education.degree: education for education in cv.education}
+    assert by_degree["Licence Fondamentale en Genie de Telecommunication"].start_year == 2020
+    assert by_degree["Licence Fondamentale en Genie de Telecommunication"].end_year == 2023
+    assert by_degree["Master Specialise Big Data & Cloud Computing"].start_year == 2019
+    assert by_degree["Master Specialise Big Data & Cloud Computing"].end_year == 2021
+    assert by_degree["Baccalaureat en sciences Mathematiques A"].start_year == 2019
+    assert by_degree["Baccalaureat en sciences Mathematiques A"].end_year == 2020
+    assert "Baccalaureat" not in by_degree
+    baccalaureate = next(education for education in cv.education if education.degree.startswith("Baccalaureate"))
+    assert baccalaureate.end_year == 2019
+    assert by_degree["CYCLE D'INGENIERIE"].start_year == 2023
+    assert by_degree["CYCLE D'INGENIERIE"].end_year is None
+    assert "PFE master internship" not in by_degree
+    assert "Analyse du baccalaureat (1997-2024) : etude exploratoire Power BI" not in by_degree
+
+
+def test_cv_extractor_replaces_generic_education_degree_with_raw_source_title() -> None:
+    text = """
+    Diplomes et formation
+    Master 2 en Ingenierie des systemes d'informations (Bac+5) Ecole
+    Superieure d'Ingenierie En Sciences Appliquees
+    Licence en Ingenierie Logicielle (Bac+3) Ecole Superieure d'Ingenierie En
+    Sciences Appliquees
+    """
+    document = DocumentText(filename="generic-education.txt", text=text, char_count=len(text))
+    llm_payload = {
+        "candidate_name": "Candidate",
+        "education": [{"degree": "Master 2"}, {"degree": "Licence"}],
+    }
+
+    cv = CVExtractor(StaticLLM(llm_payload)).extract(document)
+
+    assert [education.degree for education in cv.education] == [
+        "Master 2 en Ingenierie des systemes d'informations (Bac+5)",
+        "Licence en Ingenierie Logicielle (Bac+3)",
     ]
 
 
